@@ -24,9 +24,10 @@
         },
         "specular_white":
         {
-            "TYPE":"Mirror",
+            "TYPE":"Glass",
             "RGB":[0.98, 0.98, 0.98],
-            "ROUGHNESS":0.0
+            "ROUGHNESS":0.0,
+            "IOR":1.5
         }
     },
     "Camera":
@@ -87,7 +88,7 @@
         {
             "TYPE":"sphere",
             "MATERIAL":"specular_white",
-            "TRANS":[-1.0,4.0,-1.0],
+            "TRANS":[-2.0,3.0,-0.0],
             "ROTAT":[0.0,0.0,0.0],
             "SCALE":[3.0,3.0,3.0]
         }

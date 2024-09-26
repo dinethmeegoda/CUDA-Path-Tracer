@@ -46,12 +46,43 @@ void Scene::loadFromJSON(const std::string& jsonName)
             const auto& col = p["RGB"];
             newMaterial.color = glm::vec3(col[0], col[1], col[2]);
             newMaterial.emittance = p["EMITTANCE"];
-        }
-        else if (p["TYPE"] == "Specular")
-        {
-            const auto& col = p["RGB"];
-            newMaterial.color = glm::vec3(col[0], col[1], col[2]);
-        }
+		}
+		else if (p["TYPE"] == "Mirror")
+		{
+			newMaterial.hasReflective = 1;
+            newMaterial.hasRefractive = 0;
+			newMaterial.hasPlastic = 0;
+			newMaterial.color = glm::vec3(1.0f);
+			newMaterial.roughness = p["ROUGHNESS"];
+		}
+		else if (p["TYPE"] == "Plastic")
+		{
+			const auto& col = p["RGB"];
+			newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+			newMaterial.hasPlastic = 1;
+		}
+		else if (p["TYPE"] == "Glass")
+		{
+			const auto& col = p["RGB"];
+			newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+			newMaterial.hasReflective = 1;
+			newMaterial.hasRefractive = 1;
+			newMaterial.indexOfRefraction = p["IOR"];
+		}
+		else if (p["TYPE"] == "Transmissive")
+		{
+			const auto& col = p["RGB"];
+			newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+            newMaterial.indexOfRefraction = p["IOR"];
+			newMaterial.hasReflective = 0;
+			newMaterial.hasRefractive = 1;
+			newMaterial.hasPlastic = 0;
+		}
+		else
+		{
+			std::cerr << "Unknown material type: " << p["TYPE"] << std::endl;
+			exit(-1);
+		}
         MatNameToID[name] = materials.size();
         materials.emplace_back(newMaterial);
     }
