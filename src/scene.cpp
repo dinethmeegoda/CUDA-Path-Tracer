@@ -68,6 +68,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
 			newMaterial.hasReflective = 1;
 			newMaterial.hasRefractive = 1;
 			newMaterial.indexOfRefraction = p["IOR"];
+			newMaterial.dispersion = p["DISPERSION"];
 		}
 		else if (p["TYPE"] == "Transmissive")
 		{

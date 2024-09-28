@@ -81,8 +81,6 @@ __host__ __device__ glm::vec3 sample_f_specular_reflection(
 
 __host__ __device__ glm::vec3 sample_f_specular_transmission(
 	glm::vec3 normal, glm::vec3 rayDir, float IOR, glm::vec3 color, glm::vec3 &wiW) {
-	float etaA = 1.f; // IOR of air
-    float etaB = IOR; // IOR of material
 
     // Determine if we're entering or exiting the material
     bool entering = glm::dot(rayDir, normal) < 0.0f;
@@ -132,6 +130,16 @@ __host__ __device__ glm::vec3 sample_f_specular_plastic(
 	return glm::vec3(1.0f, 0.0f, 0.0f);
 }
 
+__host__ __device__ float presence_single(glm::vec3 a, glm::vec3 b) {
+    return glm::dot(a, b) / glm::dot(a, glm::vec3(1.));
+}
+
+__host__ __device__ float presence(glm::vec3 a, glm::vec3 b) {
+     float t = presence_single(a, b);
+     t = pow(t, 3.);
+     return glm::clamp(t, 0.f, 1.f);
+}
+
 __host__ __device__ void scatterRay(
     PathSegment & pathSegment,
     glm::vec3 intersect,
@@ -148,7 +156,25 @@ __host__ __device__ void scatterRay(
     // calculateRandomDirectionInHemisphere defined above.
     if (m.hasReflective && m.hasRefractive) {
 		// Transparent and reflective material like glass
-		bsdf = sample_f_glass(normal, pathSegment.ray.direction, m.indexOfRefraction, m.color, wiW, rng);
+#define DISPERSION 1
+#if DISPERSION
+        /*float consumeChance = 1 - presence(pathSegment.waveColor, m.color);
+        thrust::uniform_real_distribution<float> u01(0.f, 0.1f);
+        if (u01(rng) < consumeChance) {
+            pathSegment.remainingBounces = 0;
+            return;
+        }*/
+        pathSegment.color = pathSegment.waveColor;
+        bsdf = sample_f_glass(normal, pathSegment.ray.direction, 
+            //m.indexOfRefraction,
+            m.indexOfRefraction + m.dispersion * 1e5 / (pathSegment.waveLength * pathSegment.waveLength), 
+            //m.color,
+            pathSegment.waveColor, 
+            wiW, rng);
+#endif
+#if !DISPERSION
+            bsdf = sample_f_glass(normal, pathSegment.ray.direction, m.indexOfRefraction, m.color, wiW, rng);
+#endif
 		pdf = 1.0f;
 		ignore_pdf = false;
     }

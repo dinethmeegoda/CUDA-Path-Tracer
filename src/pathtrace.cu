@@ -44,11 +44,28 @@ void checkCUDAErrorFn(const char* msg, const char* file, int line)
 #endif // ERRORCHECK
 }
 
+__constant__ float cie_1964_dev_data[471][3];
+
 __host__ __device__
 thrust::default_random_engine makeSeededRandomEngine(int iter, int index, int depth)
 {
     int h = utilhash((1 << 31) | (depth << 22) | iter) ^ utilhash(index);
     return thrust::default_random_engine(h);
+}
+
+ //Function to help with the conversion from wavelength to RGB
+__host__ __device__ glm::vec3 wl_rgb(int wavelength) {
+	wavelength -= 360;
+    glm::vec3 xyz = (wavelength < 0 || wavelength > 470) ? glm::vec3(0.f) : glm::vec3(cie_1964_dev_data[wavelength][0], cie_1964_dev_data[wavelength][1], cie_1964_dev_data[wavelength][2]);
+    float x = xyz.x;
+    float y = xyz.y;
+    float z = xyz.z;
+
+    glm::vec3 rgb;
+    rgb.r = 3.2404542 * x - 1.5371385 * y - 0.4985314 * z;
+    rgb.g = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z;
+    rgb.b = 0.0556434 * x - 0.2040259 * y + 1.0572252 * z;
+    return glm::clamp(rgb, 0.f, 1.f);
 }
 
 //Kernel that writes the image to the OpenGL PBO directly.
@@ -112,7 +129,7 @@ void pathtraceInit(Scene* scene)
     cudaMemset(dev_intersections, 0, pixelcount * sizeof(ShadeableIntersection));
 
     // TODO: initialize any extra device memeory you need
-
+	cudaMemcpyToSymbol(cie_1964_dev_data, cie_1964_host_data, 471 * sizeof(glm::vec3));
     checkCUDAError("pathtraceInit");
 }
 
@@ -148,15 +165,20 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         segment.ray.origin = cam.position;
         segment.color = glm::vec3(1.0f, 1.0f, 1.0f);
 
-        // TODO: implement antialiasing by jittering the ray
+        // antialiasing by jittering the ray
 
 		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, traceDepth);
-		thrust::uniform_real_distribution<float> u01(-1.5, 1.5);
+		thrust::uniform_real_distribution<float> u1_5(-1.5, 1.5);
 
         segment.ray.direction = glm::normalize(cam.view
-            - cam.right * cam.pixelLength.x * ((float)x + u01(rng) - (float)cam.resolution.x * 0.5f)
-            - cam.up * cam.pixelLength.y * ((float)y + u01(rng) - (float)cam.resolution.y * 0.5f)
+            - cam.right * cam.pixelLength.x * ((float)x + u1_5(rng) - (float)cam.resolution.x * 0.5f)
+            - cam.up * cam.pixelLength.y * ((float)y + u1_5(rng) - (float)cam.resolution.y * 0.5f)
         );
+
+        // wavelength setting
+        thrust::uniform_real_distribution<float> u01(0, 1);
+        segment.waveLength = u01(rng) * 470 + 360;
+		segment.waveColor = 2.0f * wl_rgb(segment.waveLength);
 
         segment.pixelIndex = index;
         segment.remainingBounces = traceDepth;

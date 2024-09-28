@@ -34,17 +34,13 @@ struct Geom
 struct Material
 {
     glm::vec3 color;
-    struct
-    {
-        float exponent;
-        glm::vec3 color;
-    } specular;
-    float hasReflective;
-    float hasRefractive;
-	float hasPlastic;
+    int hasReflective;
+    int hasRefractive;
+	int hasPlastic;
     float indexOfRefraction;
     float emittance;
 	float roughness;
+    float dispersion;
 };
 
 struct Camera
@@ -74,7 +70,8 @@ struct PathSegment
     glm::vec3 color;
     int pixelIndex;
     int remainingBounces;
-    //float wavelength;
+	int waveLength;
+    glm::vec3 waveColor;
 };
 
 // Use with a corresponding PathSegment to do:
