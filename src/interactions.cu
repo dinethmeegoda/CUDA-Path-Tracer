@@ -145,7 +145,8 @@ __host__ __device__ void scatterRay(
     glm::vec3 intersect,
     glm::vec3 normal,
     const Material &m,
-    thrust::default_random_engine &rng)
+    thrust::default_random_engine &rng,
+    glm::vec3 texture_color)
 {
     glm::vec3 wiW;
     glm::vec3 bsdf;
@@ -156,7 +157,7 @@ __host__ __device__ void scatterRay(
     // calculateRandomDirectionInHemisphere defined above.
     if (m.hasReflective && m.hasRefractive) {
 		// Transparent and reflective material like glass
-#define DISPERSION 1
+#define DISPERSION 0
 #if DISPERSION
         /*float consumeChance = 1 - presence(pathSegment.waveColor, m.color);
         thrust::uniform_real_distribution<float> u01(0.f, 0.1f);
@@ -200,7 +201,7 @@ __host__ __device__ void scatterRay(
 		//bsdf = glm::vec3(1.0f, 0.f, 0.f);
 	}
 	else {
-		bsdf = m.color / PI;
+		bsdf = texture_color[0] == -1.0f ? m.color / PI : texture_color / PI;
 		wiW = calculateRandomDirectionInHemisphere(normal, rng);
 		pdf = glm::cos(glm::acos(glm::dot(wiW, normal))) / PI;
 		ignore_pdf = false;

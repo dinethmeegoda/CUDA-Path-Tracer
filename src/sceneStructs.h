@@ -10,7 +10,8 @@
 enum GeomType
 {
     SPHERE,
-    CUBE
+    CUBE,
+    MESH
 };
 
 struct Ray
@@ -19,9 +20,31 @@ struct Ray
     glm::vec3 direction;
 };
 
+struct Vertex {
+    glm::vec3 pos;
+    glm::vec3 nor;
+    glm::vec2 uv;
+};
+
+struct Triangle {
+    Vertex v1;
+    Vertex v2;
+    Vertex v3;
+};
+
+struct Texture {
+    int id;
+    int width;
+    int height;
+    int numChannels;
+    int startIndex;
+	int endIndex;
+};
+
 struct Geom
 {
     enum GeomType type;
+    int meshid;
     int materialid;
     glm::vec3 translation;
     glm::vec3 rotation;
@@ -29,6 +52,12 @@ struct Geom
     glm::mat4 transform;
     glm::mat4 inverseTransform;
     glm::mat4 invTranspose;
+	int triangleStart;
+	int triangleEnd;
+    int textureStart = -1;
+	bool usesTexture = false;
+    bool usesNormals = false;
+    bool usesUVs = false;
 };
 
 struct Material
@@ -81,5 +110,8 @@ struct ShadeableIntersection
 {
   float t;
   glm::vec3 surfaceNormal;
+  bool hasUV = false;
+  glm::vec2 uv;
+  int texid = -1;
   int materialId;
 };

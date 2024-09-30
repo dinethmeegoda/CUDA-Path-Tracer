@@ -111,3 +111,86 @@ __host__ __device__ float sphereIntersectionTest(
 
     return glm::length(r.origin - intersectionPoint);
 }
+
+__host__ __device__ glm::vec3 barycentricInterpolation(glm::vec3 p, glm::vec3 v1, glm::vec3 v2, glm::vec3 v3) {
+	glm::vec3 edge1 = v2 - v1;
+	glm::vec3 edge2 = v3 - v1;
+    float s = glm::length(glm::cross(edge1, edge2));
+
+    edge1 = p - v2;
+    edge2 = p - v3;
+	float s1 = glm::length(glm::cross(edge1, edge2)) / s;
+
+	edge1 = p - v1;
+	edge2 = p - v3;
+	float s2 = glm::length(glm::cross(edge1, edge2)) / s;
+
+	edge1 = p - v1;
+	edge2 = p - v2;
+	float s3 = glm::length(glm::cross(edge1, edge2)) / s;
+
+	return glm::vec3(s1, s2, s3);
+}
+
+__host__ __device__ float meshIntersectionTest(
+    Geom mesh,
+    Ray r,
+    glm::vec3 &intersectionPoint,
+    glm::vec3 &normal,
+    glm::vec2 &uv,
+    Triangle* triangles
+) {
+    // Create and transform Ray to local space
+	glm::vec3 origin = multiplyMV(mesh.inverseTransform, glm::vec4(r.origin, 1.0f));
+	glm::vec3 direction = glm::normalize(multiplyMV(mesh.inverseTransform, glm::vec4(r.direction, 0.0f)));
+
+	bool intersected = false;
+    float t = FLT_MAX;
+    int tri = -1;
+    // Go through each triangle
+    for (int i = mesh.triangleStart; i <= mesh.triangleEnd; i++) {
+        glm::vec3 barycentricIntersection;
+        if (glm::intersectRayTriangle(origin, direction, triangles[i].v1.pos, triangles[i].v2.pos, triangles[i].v3.pos, barycentricIntersection)) {
+            intersected = true;
+
+            float temp_t = barycentricIntersection.z;
+            if (temp_t < t) {
+                t = temp_t;
+                tri = i;
+            }
+        }
+    }
+
+    if (!intersected) {
+        return -1.0f;
+    }
+
+    glm::vec3 barycentric, localIntersection, localNormal;
+
+    // Calculate intersection and bring to world space
+    localIntersection = origin + t * direction;
+
+    // Calcuate Barycentric Weights and use for uvs and normals if necessary
+    Vertex v1 = triangles[tri].v1;
+    Vertex v2 = triangles[tri].v2;
+    Vertex v3 = triangles[tri].v3;
+
+    barycentric = barycentricInterpolation(localIntersection, v1.pos, v2.pos, v3.pos);
+
+    localNormal = mesh.usesNormals ? barycentric.x * v1.nor + barycentric.y * v2.nor + barycentric.z * v3.nor :
+        glm::normalize(glm::cross(v2.pos - v1.pos, v3.pos - v1.pos));
+
+	if (mesh.usesUVs) {
+		uv = glm::vec2(barycentric.x * v1.uv[0] + barycentric.y * v2.uv[0] + barycentric.z * v3.uv[0], barycentric.x * v1.uv[1] + barycentric.y * v2.uv[1] + barycentric.z * v3.uv[1]);
+    }
+    else {
+		uv = glm::vec2(0.0f);
+	}
+
+    intersectionPoint = multiplyMV(mesh.transform, glm::vec4(localIntersection, 1.0f));
+
+    // Use transform and w = 0 to avoid warping normals when transforming
+    normal = glm::normalize(multiplyMV(mesh.invTranspose, glm::vec4(localNormal, 0.f)));
+    return glm::length(origin - intersectionPoint);
+
+}

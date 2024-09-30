@@ -5,7 +5,90 @@
 #include <unordered_map>
 #include "json.hpp"
 #include "scene.h"
+#include <tiny_gltf.h>
+
 using json = nlohmann::json;
+
+void Scene::loadGLTFMesh(const std::string& og_filename, Geom &newGeom) {
+    std::string filePrefix = "../../../scenes/Assets/";
+	std::string filename = filePrefix + og_filename;
+	// Check if mesh is already loaded
+    auto find = meshes.find(filename);
+	if (find != meshes.end()) {
+		std::cout << "Mesh already loaded" << std::endl;
+        return;
+	}
+	tinygltf::TinyGLTF loader;
+	tinygltf::Model model;
+	std::string err;
+	std::string warn;
+
+    // Try loading the file
+	bool success = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
+	if (!warn.empty()) {
+		std::cerr << "Warning: " << warn << std::endl;
+	}
+	if (!err.empty()) {
+		std::cerr << "Error: " << err << std::endl;
+	}
+	if (!success) {
+        return;
+	}
+
+	// Load each mesh
+    for (const auto& mesh : model.meshes) {
+		newGeom.triangleStart = triangles.size();
+        for (auto& primitive : mesh.primitives) {
+            int posAccessorIndex = primitive.attributes.at("POSITION");
+            tinygltf::Accessor& posAccessor = model.accessors[posAccessorIndex];
+            tinygltf::BufferView& posBufferView = model.bufferViews[posAccessor.bufferView];
+            tinygltf::Buffer& positionBuffer = model.buffers[posBufferView.buffer];
+            float* positions = reinterpret_cast<float*>(&(positionBuffer.data[posBufferView.byteOffset + posAccessor.byteOffset]));
+
+			int index = model.materials[primitive.material].pbrMetallicRoughness.baseColorTexture.index;
+			if (primitive.material >= 0 && index >= 0) {
+				tinygltf::Texture& texture = model.textures[index];
+                Texture tex;
+                tex.id = textures.size();
+				tex.startIndex = textureData.size();
+                newGeom.usesTexture = true;
+                newGeom.textureStart = tex.id;
+				float* albedoTexture = stbi_loadf((filePrefix + model.images[texture.source].uri).c_str(), &tex.width, &tex.height, &tex.numChannels, 0);
+				for (int i = 0; i < tex.width * tex.height; i++) {
+					textureData.push_back(glm::vec3(albedoTexture[i * tex.numChannels], albedoTexture[i * tex.numChannels + 1], albedoTexture[i * tex.numChannels + 2]));
+				}
+				tex.endIndex = textureData.size() - 1;
+				textures.push_back(tex);
+				stbi_image_free(albedoTexture);
+            }
+
+            if (primitive.indices >= 0) {
+				tinygltf::Accessor& indexAccessor = model.accessors[primitive.indices];
+				tinygltf::BufferView& indexBufferView = model.bufferViews[indexAccessor.bufferView];
+				tinygltf::Buffer& indexBuffer = model.buffers[indexBufferView.buffer];
+				if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT) {
+					uint16_t* indices = reinterpret_cast<uint16_t*>(&(indexBuffer.data[indexBufferView.byteOffset + indexAccessor.byteOffset]));
+					populateTriangleData(indices, model, indexAccessor, primitive, positions, newGeom);
+				}
+                else if (indexAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT) {
+					uint32_t* indices = reinterpret_cast<uint32_t*>(&(indexBuffer.data[indexBufferView.byteOffset + indexAccessor.byteOffset]));
+                    populateTriangleData(indices, model, indexAccessor, primitive, positions, newGeom);
+				}
+                else {
+					cout << "Index component type " << indexAccessor.componentType << " not supported" << endl;
+                    return;
+                }
+			}
+        }
+
+		newGeom.triangleEnd = triangles.size() - 1;
+        cout << "This mesh has : " << newGeom.triangleEnd + newGeom.triangleStart + 1 << " triangles" << endl;
+        cout << "Total triangles : " << triangles.size() << " triangles" << endl;
+
+		meshes[filename] = &newGeom;
+
+    }
+}
 
 Scene::Scene(string filename)
 {
@@ -96,10 +179,15 @@ void Scene::loadFromJSON(const std::string& jsonName)
         {
             newGeom.type = CUBE;
         }
-        else
+		else if (type == "sphere")
         {
             newGeom.type = SPHERE;
         }
+		else if (type == "mesh")
+		{
+            newGeom.type = MESH;
+			loadGLTFMesh(p["FILE"], newGeom);
+		}
         newGeom.materialid = MatNameToID[p["MATERIAL"]];
         const auto& trans = p["TRANS"];
         const auto& rotat = p["ROTAT"];

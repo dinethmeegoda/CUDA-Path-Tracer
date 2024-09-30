@@ -74,6 +74,7 @@ set(sources
     src/scene.cpp
     src/preview.cpp
     src/utilities.cpp
+    src/tiny_gltf.cpp
 )
 
 set(imgui_headers

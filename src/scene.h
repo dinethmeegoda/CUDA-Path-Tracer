@@ -7,6 +7,9 @@
 #include "glm/glm.hpp"
 #include "utilities.h"
 #include "sceneStructs.h"
+#include "image.h"
+#include <tiny_gltf.h>
+#include <stb_image.h>
 
 using namespace std;
 
@@ -19,7 +22,64 @@ public:
     Scene(string filename);
     ~Scene();
 
+    template <typename T>
+    void populateTriangleData(T* indices, tinygltf::Model& model, tinygltf::Accessor& accessor, const tinygltf::Primitive& primitive, float* positions, Geom& mesh) 
+	{
+		for (size_t i = 0; i < accessor.count; i += 3) {
+			Triangle tri;
+
+			// vertex positions
+			tri.v1.pos = glm::vec3(positions[indices[i] * 3], positions[indices[i] * 3 + 1], positions[indices[i] * 3 + 2]);
+			tri.v2.pos = glm::vec3(positions[indices[i + 1] * 3], positions[indices[i + 1] * 3 + 1], positions[indices[i + 1] * 3 + 2]);
+			tri.v3.pos = glm::vec3(positions[indices[i + 2] * 3], positions[indices[i + 2] * 3 + 1], positions[indices[i + 2] * 3 + 2]);
+
+			// vertex normals
+			auto normals = primitive.attributes.find("NORMAL");
+			if (normals != primitive.attributes.end()) {
+				int norAccessorIndex = primitive.attributes.at("NORMAL");
+				tinygltf::Accessor& norAccessor = model.accessors[norAccessorIndex];
+				tinygltf::BufferView& norBufferView = model.bufferViews[norAccessor.bufferView];
+				tinygltf::Buffer& normalBuffer = model.buffers[norBufferView.buffer];
+				float* normals = reinterpret_cast<float*>(&(normalBuffer.data[norBufferView.byteOffset + norAccessor.byteOffset]));
+
+				tri.v1.nor = glm::vec3(normals[indices[i] * 3], normals[indices[i] * 3 + 1], normals[indices[i] * 3 + 2]);
+				tri.v2.nor = glm::vec3(normals[indices[i + 1] * 3], normals[indices[i + 1] * 3 + 1], normals[indices[i + 1] * 3 + 2]);
+				tri.v3.nor = glm::vec3(normals[indices[i + 2] * 3], normals[indices[i + 2] * 3 + 1], normals[indices[i + 2] * 3 + 2]);
+
+				mesh.usesNormals = true;
+			}
+
+			// vertex uvs
+			auto uvs = primitive.attributes.find("TEXCOORD_0");
+			if (uvs != primitive.attributes.end()) {
+				int uvAccessorIndex = primitive.attributes.at("TEXCOORD_0");
+				tinygltf::Accessor& uvAccessor = model.accessors[uvAccessorIndex];
+				tinygltf::BufferView& uvBufferView = model.bufferViews[uvAccessor.bufferView];
+				tinygltf::Buffer& uvBuffer = model.buffers[uvBufferView.buffer];
+				float* uvs = reinterpret_cast<float*>(&(uvBuffer.data[uvBufferView.byteOffset + uvAccessor.byteOffset]));
+
+				tri.v1.uv = glm::vec2(uvs[indices[i] * 2], uvs[indices[i] * 2 + 1]);
+				tri.v2.uv = glm::vec2(uvs[indices[i + 1] * 2], uvs[indices[i + 1] * 2 + 1]);
+				tri.v3.uv = glm::vec2(uvs[indices[i + 2] * 2], uvs[indices[i + 2] * 2 + 1]);
+
+				mesh.usesUVs = true;
+			}
+
+			triangles.push_back(tri);
+
+		}
+	}
+
+
+    void loadGLTFMesh(const std::string& filename, Geom& newGeom);
+
     std::vector<Geom> geoms;
+	std::vector<Triangle> triangles;
+	std::map<std::string, Geom*> meshes;
+
     std::vector<Material> materials;
+	std::vector<Texture> textures;
+    std::vector<glm::vec3> textureData;
+
     RenderState state;
 };
