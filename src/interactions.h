@@ -16,14 +16,14 @@ __host__ __device__ glm::vec3 calculateRandomDirectionInHemisphere(
 __host__ __device__ float fresnelDielectric(float cosThetaI, float ior);
 
 __host__ __device__ glm::vec3 sample_f_glass(
-    glm::vec3 normal, glm::vec3 rayDir, float IOR, glm::vec3 color,
+    glm::vec3 &normal, glm::vec3 rayDir, float IOR, glm::vec3 color,
     glm::vec3 &wiW, thrust::default_random_engine& rng);
 
 __host__ __device__ glm::vec3 sample_f_specular_reflection(
     glm::vec3 normal, glm::vec3 rayDir, glm::vec3 color, glm::vec3 &wiW);
 
 __host__ __device__ glm::vec3 sample_f_specular_transmission(
-    glm::vec3 normal, glm::vec3 rayDir, float IOR, glm::vec3 color,
+    glm::vec3 &normal, glm::vec3 rayDir, float IOR, glm::vec3 color,
 	glm::vec3 &wiW);
 
 __host__ __device__ glm::vec3 sample_f_specular_plastic(

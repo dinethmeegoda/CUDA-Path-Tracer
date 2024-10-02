@@ -104,6 +104,7 @@ static ShadeableIntersection* dev_intersections = NULL;
 static Triangle* dev_triangles = NULL;
 static Texture* dev_textures = NULL;
 static glm::vec3* dev_texture_data = NULL;
+static BVHNode* dev_bvhNodes = NULL;
 
 
 void InitDataContainer(GuiDataContainer* imGuiData)
@@ -138,14 +139,24 @@ void pathtraceInit(Scene* scene)
 	cudaMemcpyToSymbol(cie_1964_dev_data, cie_1964_host_data, 471 * sizeof(glm::vec3));
     checkCUDAError("pathtraceInit");
 
-	cudaMalloc(&dev_triangles, scene->triangles.size() * sizeof(Triangle));
-	cudaMemcpy(dev_triangles, scene->triangles.data(), scene->triangles.size() * sizeof(Triangle), cudaMemcpyHostToDevice);
+    // For Meshes
 
-	cudaMalloc(&dev_textures, scene->textures.size() * sizeof(Texture));
-	cudaMemcpy(dev_textures, scene->textures.data(), scene->textures.size() * sizeof(Texture), cudaMemcpyHostToDevice);
+    if (scene->triangles.size() > 0) {
 
-	cudaMalloc(&dev_texture_data, scene->textureData.size() * sizeof(glm::vec3));
-	cudaMemcpy(dev_texture_data, scene->textureData.data(), scene->textureData.size() * sizeof(glm::vec3), cudaMemcpyHostToDevice);
+        cudaMalloc(&dev_triangles, scene->triangles.size() * sizeof(Triangle));
+        cudaMemcpy(dev_triangles, scene->triangles.data(), scene->triangles.size() * sizeof(Triangle), cudaMemcpyHostToDevice);
+
+        cudaMalloc(&dev_textures, scene->textures.size() * sizeof(Texture));
+        cudaMemcpy(dev_textures, scene->textures.data(), scene->textures.size() * sizeof(Texture), cudaMemcpyHostToDevice);
+
+        cudaMalloc(&dev_texture_data, scene->textureData.size() * sizeof(glm::vec3));
+        cudaMemcpy(dev_texture_data, scene->textureData.data(), scene->textureData.size() * sizeof(glm::vec3), cudaMemcpyHostToDevice);
+
+        int num_nodes = scene->bvhNodes.size();
+        cudaMalloc(&dev_bvhNodes, num_nodes * sizeof(BVHNode));
+        cudaMemcpy(dev_bvhNodes, scene->bvhNodes.data(), num_nodes * sizeof(BVHNode), cudaMemcpyHostToDevice);
+
+    }
 
 	checkCUDAError("pathtraceInit");
 
@@ -162,6 +173,7 @@ void pathtraceFree()
 	cudaFree(dev_triangles);
 	cudaFree(dev_textures);
 	cudaFree(dev_texture_data);
+    cudaFree(dev_bvhNodes);
 
     checkCUDAError("pathtraceFree");
 }
@@ -184,7 +196,6 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         PathSegment& segment = pathSegments[index];
 
         segment.ray.origin = cam.position;
-        segment.color = glm::vec3(1.0f, 1.0f, 1.0f);
 
         // antialiasing by jittering the ray
 
@@ -199,7 +210,7 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
         // wavelength setting
         thrust::uniform_real_distribution<float> u01(0, 1);
         segment.waveLength = u01(rng) * 470 + 360;
-		segment.waveColor = 2.0f * wl_rgb(segment.waveLength);
+		segment.color = 3.0f * wl_rgb(segment.waveLength);
 
         segment.pixelIndex = index;
         segment.remainingBounces = traceDepth;
@@ -216,7 +227,8 @@ __global__ void computeIntersections(
     PathSegment* pathSegments,
     Geom* geoms,
     int geoms_size,
-	Triangle* tris,
+    Triangle* tris,
+    BVHNode* bvhnodes,
     ShadeableIntersection* intersections)
 {
     int path_index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -254,7 +266,12 @@ __global__ void computeIntersections(
             // TODO: add more intersection tests here... triangle? metaball? CSG?
             else if (geom.type == MESH)
             {
-				t = meshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, tris);
+#define BVH
+#ifdef BVH
+                t = bvhMeshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, tris, bvhnodes);
+#else 
+				t = meshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, tris, geom.triangleStart, geom.triangleEnd);
+#endif
             }
 
             // Compute the minimum t from the intersection tests to determine what
@@ -512,6 +529,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             dev_geoms,
             hst_scene->geoms.size(),
 			dev_triangles,
+            dev_bvhNodes,
             dev_intersections
         );
         checkCUDAError("trace one bounce");

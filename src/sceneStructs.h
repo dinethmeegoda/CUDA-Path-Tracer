@@ -30,6 +30,7 @@ struct Triangle {
     Vertex v1;
     Vertex v2;
     Vertex v3;
+    glm::vec3 centroid;
 };
 
 struct Texture {
@@ -100,7 +101,6 @@ struct PathSegment
     int pixelIndex;
     int remainingBounces;
 	int waveLength;
-    glm::vec3 waveColor;
 };
 
 // Use with a corresponding PathSegment to do:
@@ -114,4 +114,13 @@ struct ShadeableIntersection
   glm::vec2 uv;
   int texid = -1;
   int materialId;
+};
+
+struct BVHNode {
+
+	BVHNode() : aabbMin(FLT_MAX), aabbMax(-FLT_MAX), leftFirst(-1), numTriangles(0) {}
+
+	glm::vec3 aabbMin, aabbMax;
+	int leftFirst, numTriangles;
+	__host__ __device__ bool isLeaf() { return numTriangles > 0; }
 };

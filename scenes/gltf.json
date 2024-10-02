@@ -24,8 +24,10 @@
         },
         "specular_white":
         {
-            "TYPE":"Mirror",
-            "RGB":[0.98, 0.98, 0.98],
+            "TYPE":"Glass",
+            "RGB":[1.0,1.0, 1.0],
+            "DISPERSION":0.4,
+            "IOR": 1.333,
             "ROUGHNESS":0.0
         }
     },
@@ -86,11 +88,11 @@
         },
         {
             "TYPE":"mesh",
-            "MATERIAL":"diffuse_red",
-            "FILE":"avocado.gltf",
-            "TRANS":[-1.0,3.0,-1.0],
-            "ROTAT":[-45.0,180.0,0.0],
-            "SCALE":[50.0,50.0,50.0]
+            "MATERIAL":"diffuse_green",
+            "FILE":"../scenes/Assets/AntiqueCamera.gltf",
+            "TRANS":[0.0,0.0,3.0],
+            "ROTAT":[-90.0,0.0,300.0],
+            "SCALE":[3.0,3.0,3.0]
         }
     ]
 }

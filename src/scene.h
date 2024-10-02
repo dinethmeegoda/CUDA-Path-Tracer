@@ -29,9 +29,11 @@ public:
 			Triangle tri;
 
 			// vertex positions
-			tri.v1.pos = glm::vec3(positions[indices[i] * 3], positions[indices[i] * 3 + 1], positions[indices[i] * 3 + 2]);
-			tri.v2.pos = glm::vec3(positions[indices[i + 1] * 3], positions[indices[i + 1] * 3 + 1], positions[indices[i + 1] * 3 + 2]);
-			tri.v3.pos = glm::vec3(positions[indices[i + 2] * 3], positions[indices[i + 2] * 3 + 1], positions[indices[i + 2] * 3 + 2]);
+
+			tri.v1.pos = glm::vec3(mesh.transform * glm::vec4(positions[indices[i] * 3], positions[indices[i] * 3 + 1], positions[indices[i] * 3 + 2], 1));
+			tri.v2.pos = glm::vec3(mesh.transform * glm::vec4(positions[indices[i + 1] * 3], positions[indices[i + 1] * 3 + 1], positions[indices[i + 1] * 3 + 2], 1));
+			tri.v3.pos = glm::vec3(mesh.transform * glm::vec4(positions[indices[i + 2] * 3], positions[indices[i + 2] * 3 + 1], positions[indices[i + 2] * 3 + 2], 1));
+			tri.centroid = (tri.v1.pos + tri.v2.pos + tri.v3.pos) / 3.0f;
 
 			// vertex normals
 			auto normals = primitive.attributes.find("NORMAL");
@@ -42,9 +44,9 @@ public:
 				tinygltf::Buffer& normalBuffer = model.buffers[norBufferView.buffer];
 				float* normals = reinterpret_cast<float*>(&(normalBuffer.data[norBufferView.byteOffset + norAccessor.byteOffset]));
 
-				tri.v1.nor = glm::vec3(normals[indices[i] * 3], normals[indices[i] * 3 + 1], normals[indices[i] * 3 + 2]);
-				tri.v2.nor = glm::vec3(normals[indices[i + 1] * 3], normals[indices[i + 1] * 3 + 1], normals[indices[i + 1] * 3 + 2]);
-				tri.v3.nor = glm::vec3(normals[indices[i + 2] * 3], normals[indices[i + 2] * 3 + 1], normals[indices[i + 2] * 3 + 2]);
+				tri.v1.nor = glm::normalize(glm::vec3(mesh.invTranspose * glm::vec4(normals[indices[i] * 3], normals[indices[i] * 3 + 1], normals[indices[i] * 3 + 2], 0)));
+				tri.v2.nor = glm::normalize(glm::vec3(mesh.invTranspose * glm::vec4(normals[indices[i + 1] * 3], normals[indices[i + 1] * 3 + 1], normals[indices[i + 1] * 3 + 2], 0)));
+				tri.v3.nor = glm::normalize(glm::vec3(mesh.invTranspose * glm::vec4(normals[indices[i + 2] * 3], normals[indices[i + 2] * 3 + 1], normals[indices[i + 2] * 3 + 2], 0)));
 
 				mesh.usesNormals = true;
 			}
@@ -73,6 +75,10 @@ public:
 
     void loadGLTFMesh(const std::string& filename, Geom& newGeom);
 
+	void updateNodeBounds(int);
+	void subdivideBounds(int);
+	void buildBVH();
+
     std::vector<Geom> geoms;
 	std::vector<Triangle> triangles;
 	std::map<std::string, Geom*> meshes;
@@ -80,6 +86,10 @@ public:
     std::vector<Material> materials;
 	std::vector<Texture> textures;
     std::vector<glm::vec3> textureData;
+
+	// For BVH
+	int nodesUsed = 1;
+	std::vector<BVHNode> bvhNodes;
 
     RenderState state;
 };

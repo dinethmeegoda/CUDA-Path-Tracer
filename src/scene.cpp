@@ -10,10 +10,9 @@
 using json = nlohmann::json;
 
 void Scene::loadGLTFMesh(const std::string& og_filename, Geom &newGeom) {
-    std::string filePrefix = "../../../scenes/Assets/";
-	std::string filename = filePrefix + og_filename;
+    std::string filePrefix = og_filename.substr(0, og_filename.find_last_of("/") + 1);
 	// Check if mesh is already loaded
-    auto find = meshes.find(filename);
+    auto find = meshes.find(og_filename);
 	if (find != meshes.end()) {
 		std::cout << "Mesh already loaded" << std::endl;
         return;
@@ -24,7 +23,7 @@ void Scene::loadGLTFMesh(const std::string& og_filename, Geom &newGeom) {
 	std::string warn;
 
     // Try loading the file
-	bool success = loader.LoadASCIIFromFile(&model, &err, &warn, filename);
+	bool success = loader.LoadASCIIFromFile(&model, &err, &warn, og_filename);
 	if (!warn.empty()) {
 		std::cerr << "Warning: " << warn << std::endl;
 	}
@@ -85,7 +84,7 @@ void Scene::loadGLTFMesh(const std::string& og_filename, Geom &newGeom) {
         cout << "This mesh has : " << newGeom.triangleEnd + newGeom.triangleStart + 1 << " triangles" << endl;
         cout << "Total triangles : " << triangles.size() << " triangles" << endl;
 
-		meshes[filename] = &newGeom;
+		meshes[og_filename] = &newGeom;
 
     }
 }
@@ -175,6 +174,19 @@ void Scene::loadFromJSON(const std::string& jsonName)
     {
         const auto& type = p["TYPE"];
         Geom newGeom;
+
+        newGeom.materialid = MatNameToID[p["MATERIAL"]];
+        const auto& trans = p["TRANS"];
+        const auto& rotat = p["ROTAT"];
+        const auto& scale = p["SCALE"];
+        newGeom.translation = glm::vec3(trans[0], trans[1], trans[2]);
+        newGeom.rotation = glm::vec3(rotat[0], rotat[1], rotat[2]);
+        newGeom.scale = glm::vec3(scale[0], scale[1], scale[2]);
+        newGeom.transform = utilityCore::buildTransformationMatrix(
+            newGeom.translation, newGeom.rotation, newGeom.scale);
+        newGeom.inverseTransform = glm::inverse(newGeom.transform);
+        newGeom.invTranspose = glm::inverseTranspose(newGeom.transform);
+
         if (type == "cube")
         {
             newGeom.type = CUBE;
@@ -188,20 +200,18 @@ void Scene::loadFromJSON(const std::string& jsonName)
             newGeom.type = MESH;
 			loadGLTFMesh(p["FILE"], newGeom);
 		}
-        newGeom.materialid = MatNameToID[p["MATERIAL"]];
-        const auto& trans = p["TRANS"];
-        const auto& rotat = p["ROTAT"];
-        const auto& scale = p["SCALE"];
-        newGeom.translation = glm::vec3(trans[0], trans[1], trans[2]);
-        newGeom.rotation = glm::vec3(rotat[0], rotat[1], rotat[2]);
-        newGeom.scale = glm::vec3(scale[0], scale[1], scale[2]);
-        newGeom.transform = utilityCore::buildTransformationMatrix(
-            newGeom.translation, newGeom.rotation, newGeom.scale);
-        newGeom.inverseTransform = glm::inverse(newGeom.transform);
-        newGeom.invTranspose = glm::inverseTranspose(newGeom.transform);
 
         geoms.push_back(newGeom);
     }
+
+    // If there is a mesh, build BVH
+	if (triangles.size() > 0)
+    {
+		bvhNodes.resize(triangles.size() * 2 - 1);
+        //triangleIndices.resize(triangles.size());
+		buildBVH();
+	}
+
     const auto& cameraData = data["Camera"];
     Camera& camera = state.camera;
     RenderState& state = this->state;
@@ -234,4 +244,77 @@ void Scene::loadFromJSON(const std::string& jsonName)
     int arraylen = camera.resolution.x * camera.resolution.y;
     state.image.resize(arraylen);
     std::fill(state.image.begin(), state.image.end(), glm::vec3());
+}
+
+void Scene::buildBVH() {
+    // Populate Triangle Index Array
+    //for (int i = 0; i < triangles.size(); i++) { triangleIndices[i] = i; }
+    BVHNode& root = bvhNodes[0];
+	root.leftFirst = 0;
+	root.numTriangles = triangles.size();
+    updateNodeBounds(0);
+    subdivideBounds(0);
+}
+
+void Scene::updateNodeBounds(int nodeIdx) {
+    BVHNode& node = bvhNodes[nodeIdx];
+    node.aabbMin = glm::vec3(FLT_MAX);
+    node.aabbMax = glm::vec3(FLT_MIN);
+    for (int i = 0; i < node.numTriangles; i++) {
+		Triangle& tri = triangles[node.leftFirst + i];
+        node.aabbMin = glm::vec3{ glm::min(node.aabbMin.x, tri.v1.pos.x), glm::min(node.aabbMin.y, tri.v1.pos.y), glm::min(node.aabbMin.z, tri.v1.pos.z) };
+        node.aabbMax = glm::vec3{ glm::max(node.aabbMax.x, tri.v1.pos.x), glm::max(node.aabbMax.y, tri.v1.pos.y), glm::max(node.aabbMax.z, tri.v1.pos.z) };
+        node.aabbMin = glm::vec3{ glm::min(node.aabbMin.x, tri.v2.pos.x), glm::min(node.aabbMin.y, tri.v2.pos.y), glm::min(node.aabbMin.z, tri.v2.pos.z) };
+        node.aabbMax = glm::vec3{ glm::max(node.aabbMax.x, tri.v2.pos.x), glm::max(node.aabbMax.y, tri.v2.pos.y), glm::max(node.aabbMax.z, tri.v2.pos.z) };
+        node.aabbMin = glm::vec3{ glm::min(node.aabbMin.x, tri.v3.pos.x), glm::min(node.aabbMin.y, tri.v3.pos.y), glm::min(node.aabbMin.z, tri.v3.pos.z) };
+        node.aabbMax = glm::vec3{ glm::max(node.aabbMax.x, tri.v3.pos.x), glm::max(node.aabbMax.y, tri.v3.pos.y), glm::max(node.aabbMax.z, tri.v3.pos.z) };
+	}
+}
+
+void Scene::subdivideBounds(int nodeIdx) {
+    BVHNode& node = bvhNodes[nodeIdx];
+    if (node.numTriangles <= 2) { 
+        return; 
+    }
+
+    glm::vec3 bounds = node.aabbMax - node.aabbMin;
+    int axis = 0;
+    if (bounds.y > bounds.x) axis = 1;
+    if (bounds.z > bounds[axis]) axis = 2;
+
+    float splitPos = node.aabbMin[axis] + bounds[axis] * 0.5;
+
+    int i = node.leftFirst;
+    int j = i + node.numTriangles - 1;
+
+    while (i <= j) {
+        if (triangles[i].centroid[axis] < splitPos) {
+            i++;
+        }
+        else {
+            std::swap(triangles[i], triangles[j--]);
+        }
+    }
+
+    int leftCount = i - node.leftFirst;
+    if (leftCount == 0 || leftCount == node.numTriangles) { 
+        return;
+    }
+
+    // Make Children
+    int leftChildIdx = nodesUsed++;
+    int rightChildIdx = nodesUsed++;
+
+    bvhNodes[leftChildIdx].leftFirst = node.leftFirst;
+    bvhNodes[leftChildIdx].numTriangles = leftCount;
+    bvhNodes[rightChildIdx].leftFirst = i;
+    bvhNodes[rightChildIdx].numTriangles = node.numTriangles - leftCount;
+    node.leftFirst = leftChildIdx;
+    node.numTriangles = 0;
+    updateNodeBounds(leftChildIdx);
+    updateNodeBounds(rightChildIdx);
+    // recurse
+    subdivideBounds(leftChildIdx);
+    subdivideBounds(rightChildIdx);
+
 }
