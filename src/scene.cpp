@@ -81,7 +81,7 @@ void Scene::loadGLTFMesh(const std::string& og_filename, Geom &newGeom) {
         }
 
 		newGeom.triangleEnd = triangles.size() - 1;
-        cout << "This mesh has : " << newGeom.triangleEnd + newGeom.triangleStart + 1 << " triangles" << endl;
+        cout << "This mesh has : " << newGeom.triangleEnd - newGeom.triangleStart + 1 << " triangles" << endl;
         cout << "Total triangles : " << triangles.size() << " triangles" << endl;
 
 		meshes[og_filename] = &newGeom;
@@ -258,31 +258,65 @@ void Scene::buildBVH() {
 
 void Scene::updateNodeBounds(int nodeIdx) {
     BVHNode& node = bvhNodes[nodeIdx];
-    node.aabbMin = glm::vec3(FLT_MAX);
-    node.aabbMax = glm::vec3(FLT_MIN);
     for (int i = 0; i < node.numTriangles; i++) {
-		Triangle& tri = triangles[node.leftFirst + i];
-        node.aabbMin = glm::vec3{ glm::min(node.aabbMin.x, tri.v1.pos.x), glm::min(node.aabbMin.y, tri.v1.pos.y), glm::min(node.aabbMin.z, tri.v1.pos.z) };
-        node.aabbMax = glm::vec3{ glm::max(node.aabbMax.x, tri.v1.pos.x), glm::max(node.aabbMax.y, tri.v1.pos.y), glm::max(node.aabbMax.z, tri.v1.pos.z) };
-        node.aabbMin = glm::vec3{ glm::min(node.aabbMin.x, tri.v2.pos.x), glm::min(node.aabbMin.y, tri.v2.pos.y), glm::min(node.aabbMin.z, tri.v2.pos.z) };
-        node.aabbMax = glm::vec3{ glm::max(node.aabbMax.x, tri.v2.pos.x), glm::max(node.aabbMax.y, tri.v2.pos.y), glm::max(node.aabbMax.z, tri.v2.pos.z) };
-        node.aabbMin = glm::vec3{ glm::min(node.aabbMin.x, tri.v3.pos.x), glm::min(node.aabbMin.y, tri.v3.pos.y), glm::min(node.aabbMin.z, tri.v3.pos.z) };
-        node.aabbMax = glm::vec3{ glm::max(node.aabbMax.x, tri.v3.pos.x), glm::max(node.aabbMax.y, tri.v3.pos.y), glm::max(node.aabbMax.z, tri.v3.pos.z) };
+		const Triangle& tri = triangles[node.leftFirst + i];
+        node.aabb.grow(tri.v1.pos);
+        node.aabb.grow(tri.v2.pos);
+        node.aabb.grow(tri.v3.pos);
 	}
+}
+
+float Scene::EvaluateSAH(BVHNode& node, int axis, float pos)
+{
+    // Figure out triangle counts and bounds for this split candidate
+    aabb leftBox, rightBox;
+    int leftCount = 0, rightCount = 0;
+    for (int i = 0; i < node.numTriangles; i++)
+    {
+        Triangle& tri = triangles[node.leftFirst + i];
+        if (tri.centroid[axis] < pos)
+        {
+            leftCount++;
+            leftBox.grow(tri.v1.pos);
+            leftBox.grow(tri.v2.pos);
+            leftBox.grow(tri.v3.pos);
+        }
+        else
+        {
+            rightCount++;
+            rightBox.grow(tri.v1.pos);
+            rightBox.grow(tri.v2.pos);
+            rightBox.grow(tri.v3.pos);
+        }
+    }
+    float cost = leftCount * leftBox.area() + rightCount * rightBox.area();
+    return cost > 0 ? cost : 1e30f;
 }
 
 void Scene::subdivideBounds(int nodeIdx) {
     BVHNode& node = bvhNodes[nodeIdx];
-    if (node.numTriangles <= 2) { 
-        return; 
+    
+    if (node.numTriangles <= 8) {
+        return;
     }
 
-    glm::vec3 bounds = node.aabbMax - node.aabbMin;
-    int axis = 0;
-    if (bounds.y > bounds.x) axis = 1;
-    if (bounds.z > bounds[axis]) axis = 2;
+    // determine split axis using SAH
+    int bestAxis = -1;
+    float bestPos = 0, bestCost = 1e30f;
+    for (int axis = 0; axis < 3; axis++) for (int i = 0; i < node.numTriangles; i++)
+    {
+        Triangle& tri = triangles[node.leftFirst + i];
+        float candidatePos = tri.centroid[axis];
+        float cost = EvaluateSAH(node, axis, candidatePos);
+        if (cost < bestCost)
+            bestPos = candidatePos, bestAxis = axis, bestCost = cost;
+    }
+    int axis = bestAxis;
+    float splitPos = bestPos;
 
-    float splitPos = node.aabbMin[axis] + bounds[axis] * 0.5;
+    float parentArea = node.aabb.area();
+    float parentCost = node.numTriangles * parentArea;
+    if (bestCost >= parentCost) return;
 
     int i = node.leftFirst;
     int j = i + node.numTriangles - 1;
@@ -307,13 +341,16 @@ void Scene::subdivideBounds(int nodeIdx) {
 
     bvhNodes[leftChildIdx].leftFirst = node.leftFirst;
     bvhNodes[leftChildIdx].numTriangles = leftCount;
+    bvhNodes[leftChildIdx].aabb = bbox();
     bvhNodes[rightChildIdx].leftFirst = i;
     bvhNodes[rightChildIdx].numTriangles = node.numTriangles - leftCount;
+    bvhNodes[rightChildIdx].aabb = bbox();
+
     node.leftFirst = leftChildIdx;
     node.numTriangles = 0;
     updateNodeBounds(leftChildIdx);
     updateNodeBounds(rightChildIdx);
-    // recurse
+
     subdivideBounds(leftChildIdx);
     subdivideBounds(rightChildIdx);
 

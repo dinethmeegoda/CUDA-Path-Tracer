@@ -133,8 +133,11 @@ __host__ __device__ glm::vec3 barycentricInterpolation(glm::vec3 p, glm::vec3 v1
 }
 
 
-__host__ __device__ bool IntersectAABB(Ray& ray, float& t, glm::vec3 bmin, glm::vec3 bmax)
+__host__ __device__ bool IntersectAABB(Ray& ray, const bbox& aabb)
 {
+    glm::vec3 bmin = aabb.bmin;
+    glm::vec3 bmax = aabb.bmax;
+
     float tx1 = (bmin.x - ray.origin.x) / ray.direction.x, tx2 = (bmax.x - ray.origin.x) / ray.direction.x;
     float tmin = glm::min(tx1, tx2), tmax = glm::max(tx1, tx2);
     float ty1 = (bmin.y - ray.origin.y) / ray.direction.y, ty2 = (bmax.y - ray.origin.y) / ray.direction.y;
@@ -142,28 +145,7 @@ __host__ __device__ bool IntersectAABB(Ray& ray, float& t, glm::vec3 bmin, glm::
     float tz1 = (bmin.z - ray.origin.z) / ray.direction.z, tz2 = (bmax.z - ray.origin.z) / ray.direction.z;
     tmin = glm::max(tmin, glm::min(tz1, tz2)), tmax = glm::min(tmax, glm::max(tz1, tz2));
 
-    t = tmin;
     return tmax >= tmin && tmax > 0;
-
-    /*
-    
-    float t0x, t1x, t0y, t1y, t0z, t1z;
-    float tx1 = (bmin.x - ray.origin.x) / ray.direction.x, tx2 = (bmax.x - ray.origin.x) / ray.direction.x;
-    t0x = glm::min(tx1, tx2); t1x = glm::max(tx1, tx2);
-    float ty1 = (bmin.y - ray.origin.y) / ray.direction.y, ty2 = (bmax.y - ray.origin.y) / ray.direction.y;
-    t0y = glm::min(ty1, ty2); t1y = glm::max(ty1, ty2);
-    float tz1 = (bmin.z - ray.origin.z) / ray.direction.z, tz2 = (bmax.z - ray.origin.z) / ray.direction.z;
-    t0z = glm::min(tz1, tz2); t1z = glm::max(tz1, tz2);
-
-    if ((t0x > t1y) || (t0y > t1x)) return false;
-    if (t0y > t0x) t0x = t0y;
-    if (t1y < t1x) t1x = t1y;
-
-    if ((t0x > t1z) || (t0z > t1x)) return false;
-    if (t0z > t0x) t0x = t0z;
-    if (t1z < t1x) t1x = t1z;
-
-    return true;*/
 }
 
 __host__ __device__ float bvhMeshIntersectionTest(
@@ -188,9 +170,9 @@ __host__ __device__ float bvhMeshIntersectionTest(
         int nodeIdx = stack[--stackPtr];
         BVHNode& node = nodes[nodeIdx];
 
-        /*if (!IntersectAABB(r, local_t, node.aabbMin, node.aabbMax)) {
+        if (!IntersectAABB(r, node.aabb)) {
             continue;
-        }*/
+        }
 
         if (node.isLeaf()) {
             for (int i = 0; i < node.numTriangles; i++) {

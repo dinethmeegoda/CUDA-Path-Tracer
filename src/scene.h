@@ -91,5 +91,22 @@ public:
 	int nodesUsed = 1;
 	std::vector<BVHNode> bvhNodes;
 
+
+	struct aabb
+	{
+		glm::vec3 bmin = glm::vec3(FLT_MAX), bmax = glm::vec3(FLT_MIN);
+		void grow(glm::vec3 p) { 
+			bmin = glm::vec3(glm::min(bmin.x, p.x), glm::min(bmin.y, p.y), glm::min(bmin.z, p.z));
+			bmax = glm::vec3(glm::max(bmax.x, p.x), glm::max(bmax.y, p.y), glm::max(bmax.z, p.z));
+		}
+		float area()
+		{
+			glm::vec3 e = bmax - bmin; // box extent
+			return e.x * e.y + e.y * e.z + e.z * e.x;
+		}
+	};
+
+	float EvaluateSAH(BVHNode& node, int axis, float pos);
+
     RenderState state;
 };
