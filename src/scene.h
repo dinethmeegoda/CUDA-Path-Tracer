@@ -106,7 +106,10 @@ public:
 		}
 	};
 
+	struct Bin { aabb bounds; int triCount = 0; };
+
 	float EvaluateSAH(BVHNode& node, int axis, float pos);
+	float FindBestSplitPlane(BVHNode& node, int& axis, float& splitPos);
 
     RenderState state;
 };

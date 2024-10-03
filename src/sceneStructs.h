@@ -117,16 +117,16 @@ struct ShadeableIntersection
 };
 
 struct bbox {
-    bbox() : bmin(1e30f), bmax(-1e30f) {}
+    bbox() : boundsMin(1e30f), boundsMax(-1e30f) {}
 
-    glm::vec3 bmin, bmax;
+    glm::vec3 boundsMin, boundsMax;
     __host__ __device__ void grow(glm::vec3 p) {
-        bmin = glm::vec3{ glm::min(bmin.x, p.x), glm::min(bmin.y, p.y), glm::min(bmin.z, p.z) };
-        bmax = glm::vec3{ glm::max(bmax.x, p.x), glm::max(bmax.y, p.y), glm::max(bmax.z, p.z) };
+        boundsMin = glm::vec3{ glm::min(boundsMin.x, p.x), glm::min(boundsMin.y, p.y), glm::min(boundsMin.z, p.z) };
+        boundsMax = glm::vec3{ glm::max(boundsMax.x, p.x), glm::max(boundsMax.y, p.y), glm::max(boundsMax.z, p.z) };
     }
     __host__ __device__ float area()
     {
-        glm::vec3 e = bmax - bmin; // box extent
+        glm::vec3 e = boundsMax - boundsMin;
         return e.x * e.y + e.y * e.z + e.z * e.x;
     }
 };

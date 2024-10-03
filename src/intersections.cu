@@ -135,8 +135,8 @@ __host__ __device__ glm::vec3 barycentricInterpolation(glm::vec3 p, glm::vec3 v1
 
 __host__ __device__ bool IntersectAABB(Ray& ray, const bbox& aabb)
 {
-    glm::vec3 bmin = aabb.bmin;
-    glm::vec3 bmax = aabb.bmax;
+    glm::vec3 bmin = aabb.boundsMin;
+    glm::vec3 bmax = aabb.boundsMax;
 
     float tx1 = (bmin.x - ray.origin.x) / ray.direction.x, tx2 = (bmax.x - ray.origin.x) / ray.direction.x;
     float tmin = glm::min(tx1, tx2), tmax = glm::max(tx1, tx2);
