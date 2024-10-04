@@ -27,9 +27,8 @@ public:
 	{
 		for (size_t i = 0; i < accessor.count; i += 3) {
 			Triangle tri;
-
+			tri.meshId = mesh.meshid;
 			// vertex positions
-
 			tri.v1.pos = glm::vec3(mesh.transform * glm::vec4(positions[indices[i] * 3], positions[indices[i] * 3 + 1], positions[indices[i] * 3 + 2], 1));
 			tri.v2.pos = glm::vec3(mesh.transform * glm::vec4(positions[indices[i + 1] * 3], positions[indices[i + 1] * 3 + 1], positions[indices[i + 1] * 3 + 2], 1));
 			tri.v3.pos = glm::vec3(mesh.transform * glm::vec4(positions[indices[i + 2] * 3], positions[indices[i + 2] * 3 + 1], positions[indices[i + 2] * 3 + 2], 1));

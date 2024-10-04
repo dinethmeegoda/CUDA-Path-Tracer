@@ -89,18 +89,18 @@
         {
             "TYPE":"mesh",
             "MATERIAL":"diffuse_green",
-            "FILE":"../scenes/Assets/Avocado.gltf",
-            "TRANS":[0.0,2.0,3.0],
-            "ROTAT":[-55.0,180.0,0.0],
-            "SCALE":[120.0,120.0,120.0]
-        },
-        {
-            "TYPE":"mesh",
-            "MATERIAL":"diffuse_green",
             "FILE":"../scenes/Assets/CesiumMan.gltf",
             "TRANS":[0.0,0.0,4.0],
             "ROTAT":[90.0,180.0,45.0],
             "SCALE":[3.0,3.0,3.0]
+        },
+        {
+            "TYPE":"mesh",
+            "MATERIAL":"Glass",
+            "FILE":"../scenes/Assets/Avocado.gltf",
+            "TRANS":[0.0,2.0,3.0],
+            "ROTAT":[-55.0,180.0,0.0],
+            "SCALE":[120.0,120.0,120.0]
         }
     ]
 }

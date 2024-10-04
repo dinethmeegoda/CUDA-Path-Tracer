@@ -155,7 +155,8 @@ __host__ __device__ float bvhMeshIntersectionTest(
     glm::vec3& normal,
     glm::vec2& uv,
     Triangle* triangles,
-    BVHNode* nodes
+    BVHNode* nodes,
+    int &texId
 ) {
     const int STACK_SIZE = 64;
     bool intersected = false;
@@ -208,6 +209,10 @@ __host__ __device__ float bvhMeshIntersectionTest(
     Vertex v1 = triangles[tri].v1;
     Vertex v2 = triangles[tri].v2;
     Vertex v3 = triangles[tri].v3;
+    // Record Triangle textureId since we don't know the specific mesh
+    if (triangles[tri].meshId == 1) {
+        texId = triangles[tri].meshId;
+    }
 
     barycentric = barycentricInterpolation(intersection, v1.pos, v2.pos, v3.pos);
 

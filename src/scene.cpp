@@ -174,7 +174,7 @@ void Scene::loadFromJSON(const std::string& jsonName)
     {
         const auto& type = p["TYPE"];
         Geom newGeom;
-
+        newGeom.meshid = geoms.size();
         newGeom.materialid = MatNameToID[p["MATERIAL"]];
         const auto& trans = p["TRANS"];
         const auto& rotat = p["ROTAT"];
@@ -190,10 +190,16 @@ void Scene::loadFromJSON(const std::string& jsonName)
         if (type == "cube")
         {
             newGeom.type = CUBE;
+            // Add one triangle to the triangles array that takes up the same
+            // bounding box as the cube for the BVH. Make sure that the
+            // Triangle has some reference to the geoms index that this cube corresponds to.
         }
 		else if (type == "sphere")
         {
             newGeom.type = SPHERE;
+            // Add one triangle to the triangles array that takes up the same
+            // bounding box as the sphere for the BVH. Make sure that the
+            // Triangle has some reference to the geoms index that this sphere corresponds to.
         }
 		else if (type == "mesh")
 		{

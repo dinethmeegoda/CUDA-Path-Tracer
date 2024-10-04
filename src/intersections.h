@@ -79,7 +79,8 @@ __host__ __device__ float bvhMeshIntersectionTest(
     glm::vec3& normal,
     glm::vec2& uv,
     Triangle* triangles,
-    BVHNode* nodes
+    BVHNode* nodes,
+    int &texId
 );
 
 __host__ __device__ float meshIntersectionTest(

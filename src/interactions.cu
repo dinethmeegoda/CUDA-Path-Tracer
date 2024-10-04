@@ -152,8 +152,8 @@ __host__ __device__ void scatterRay(
 	float pdf;
 	bool ignore_pdf = true;
 
-#define ALBEDO 0
-#if ALBEDO
+#define DEBUG_ALBEDO 0
+#if DEBUG_ALBEDO
     pathSegment.color = texture_color[0] == -1.0f ? m.color: texture_color;
     pathSegment.remainingBounces = 0;
     return;

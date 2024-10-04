@@ -31,6 +31,7 @@ struct Triangle {
     Vertex v2;
     Vertex v3;
     glm::vec3 centroid;
+    int meshId;
 };
 
 struct Texture {

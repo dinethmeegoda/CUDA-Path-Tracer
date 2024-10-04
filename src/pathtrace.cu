@@ -241,6 +241,7 @@ __global__ void computeIntersections(
         glm::vec3 intersect_point;
         glm::vec3 normal;
 		glm::vec2 uv;
+        int meshId = 0;
         float t_min = FLT_MAX;
         int hit_geom_index = -1;
         bool outside = true;
@@ -248,6 +249,7 @@ __global__ void computeIntersections(
         glm::vec3 tmp_intersect;
         glm::vec3 tmp_normal;
         glm::vec2 tmp_uv;
+        int temp_meshId = 0;
 
         // naive parse through global geoms
 
@@ -268,7 +270,7 @@ __global__ void computeIntersections(
             {
 #define BVH
 #ifdef BVH
-                t = bvhMeshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, tris, bvhnodes);
+                t = bvhMeshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, tris, bvhnodes, temp_meshId);
 #else 
 				t = meshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, tris, geom.triangleStart, geom.triangleEnd);
 #endif
@@ -283,6 +285,7 @@ __global__ void computeIntersections(
                 intersect_point = tmp_intersect;
                 normal = tmp_normal;
 				uv = tmp_uv;
+                meshId = temp_meshId;
             }
         }
 
@@ -295,11 +298,13 @@ __global__ void computeIntersections(
         {
             // The ray hits something
             intersections[path_index].t = t_min;
-            intersections[path_index].materialId = geoms[hit_geom_index].materialid;
+            intersections[path_index].materialId = geoms[meshId].materialid;
             intersections[path_index].surfaceNormal = normal;
 			intersections[path_index].uv = uv;
-            intersections[path_index].hasUV = geoms[hit_geom_index].usesUVs;
-            intersections[path_index].texid = geoms[hit_geom_index].textureStart;
+            intersections[path_index].hasUV = geoms[meshId].usesUVs;
+            if (geoms[meshId].usesUVs) {
+                intersections[path_index].texid = meshId;
+            }
         }
     }
 }
