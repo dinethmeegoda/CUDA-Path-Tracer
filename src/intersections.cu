@@ -149,18 +149,19 @@ __host__ __device__ bool IntersectAABB(Ray& ray, const bbox& aabb)
 }
 
 __host__ __device__ float bvhMeshIntersectionTest(
-    Geom mesh,
+    Geom* meshes,
     Ray r,
     glm::vec3& intersectionPoint,
     glm::vec3& normal,
     glm::vec2& uv,
     Triangle* triangles,
     BVHNode* nodes,
-    int &texId
+    int &meshId
 ) {
     const int STACK_SIZE = 64;
-    bool intersected = false;
+    bool local_intersected = false, intersected = false;
     float local_t, global_t = FLT_MAX;
+    glm::vec3 tempIntersection, tempNormal;
     int tri = -1;
 
     int stack[STACK_SIZE];
@@ -177,16 +178,38 @@ __host__ __device__ float bvhMeshIntersectionTest(
 
         if (node.isLeaf()) {
             for (int i = 0; i < node.numTriangles; i++) {
-                glm::vec3 barycentricIntersection;
-                int triIdx = i + node.leftFirst;
-                if (glm::intersectRayTriangle(r.origin, r.direction, triangles[triIdx].v1.pos, triangles[triIdx].v2.pos, triangles[triIdx].v3.pos, barycentricIntersection)) {
-                    intersected = true;
-
-                    float temp_t = barycentricIntersection.z;
-                    if (temp_t < global_t || global_t == -1) {
-                        global_t = temp_t;
-                        tri = triIdx;
+                int mesh = triangles[i + node.leftFirst].meshId;
+                if (meshes[mesh].type == SPHERE) {
+                    bool outside = true;
+                    local_t = sphereIntersectionTest(meshes[mesh], r, tempIntersection, tempNormal, outside);
+                    local_intersected = local_t > 0;
+                }
+                else if (meshes[mesh].type == CUBE) {
+                    bool outside = true;
+                    if (mesh == 1) {
+                        mesh = 1;
                     }
+                    local_t = boxIntersectionTest(meshes[mesh], r, tempIntersection, tempNormal, outside);
+					local_intersected = local_t > 0;
+                }
+                else {
+                    glm::vec3 barycentricIntersection;
+                    int triIdx = i + node.leftFirst;
+                    if (glm::intersectRayTriangle(r.origin, r.direction, triangles[triIdx].v1.pos, triangles[triIdx].v2.pos, triangles[triIdx].v3.pos, barycentricIntersection)) {
+                        local_intersected = true;
+                        local_t = barycentricIntersection.z;
+                    }
+                }
+                if (local_t < global_t && local_intersected) {
+                    if (mesh == 4) {
+                        mesh = 4;
+                    }
+                    global_t = local_t;
+                    tri = i + node.leftFirst;
+                    meshId = mesh;
+                    intersectionPoint = tempIntersection;
+                    normal = tempNormal;
+                    intersected = true;
                 }
             }
         }
@@ -200,26 +223,27 @@ __host__ __device__ float bvhMeshIntersectionTest(
         return -1.f;
     }
 
+	if (meshes[meshId].type == SPHERE || meshes[meshId].type == CUBE) {
+		return global_t;
+	}
+
     glm::vec3 barycentric, intersection, localNormal;
 
     // Calculate intersection
     intersection = r.origin + global_t * r.direction;
+	intersectionPoint = intersection;
 
     // Calcuate Barycentric Weights and use for uvs and normals if necessary
     Vertex v1 = triangles[tri].v1;
     Vertex v2 = triangles[tri].v2;
     Vertex v3 = triangles[tri].v3;
-    // Record Triangle textureId since we don't know the specific mesh
-    if (triangles[tri].meshId == 1) {
-        texId = triangles[tri].meshId;
-    }
 
     barycentric = barycentricInterpolation(intersection, v1.pos, v2.pos, v3.pos);
 
-    normal = mesh.usesNormals ? barycentric.x * v1.nor + barycentric.y * v2.nor + barycentric.z * v3.nor :
+    normal = meshes[meshId].usesNormals ? barycentric.x * v1.nor + barycentric.y * v2.nor + barycentric.z * v3.nor :
         glm::normalize(glm::cross(v2.pos - v1.pos, v3.pos - v1.pos));
 
-    if (mesh.usesUVs) {
+    if (meshes[meshId].usesUVs) {
         uv = glm::vec2(barycentric.x * v1.uv[0] + barycentric.y * v2.uv[0] + barycentric.z * v3.uv[0], barycentric.x * v1.uv[1] + barycentric.y * v2.uv[1] + barycentric.z * v3.uv[1]);
     }
     else {

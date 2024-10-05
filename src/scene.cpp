@@ -193,6 +193,13 @@ void Scene::loadFromJSON(const std::string& jsonName)
             // Add one triangle to the triangles array that takes up the same
             // bounding box as the cube for the BVH. Make sure that the
             // Triangle has some reference to the geoms index that this cube corresponds to.
+            Triangle tri;
+			tri.v1.pos = glm::vec3(newGeom.transform * glm::vec4(-0.5f, -0.5f, -0.5f, 1));
+			tri.v2.pos = glm::vec3(newGeom.transform * glm::vec4(-0.5f, -0.5f, 0.5f, 1));
+			tri.v3.pos = glm::vec3(newGeom.transform * glm::vec4(0.5f, 0.5f, 0.5f, 1));
+			tri.centroid = (tri.v1.pos + tri.v2.pos + tri.v3.pos) / 3.0f;
+			tri.meshId = newGeom.meshid;
+			triangles.push_back(tri);
         }
 		else if (type == "sphere")
         {
@@ -200,6 +207,13 @@ void Scene::loadFromJSON(const std::string& jsonName)
             // Add one triangle to the triangles array that takes up the same
             // bounding box as the sphere for the BVH. Make sure that the
             // Triangle has some reference to the geoms index that this sphere corresponds to.
+            Triangle tri;
+            tri.v1.pos = glm::vec3(newGeom.transform * glm::vec4(-0.5f, -0.5f, -0.5f, 1));
+            tri.v2.pos = glm::vec3(newGeom.transform * glm::vec4(-0.5f, -0.5f, 0.5f, 1));
+            tri.v3.pos = glm::vec3(newGeom.transform * glm::vec4(0.5f, 0.5f, 0.5f, 1));
+            tri.centroid = (tri.v1.pos + tri.v2.pos + tri.v3.pos) / 3.0f;
+            tri.meshId = newGeom.meshid;
+            triangles.push_back(tri);
         }
 		else if (type == "mesh")
 		{

@@ -96,7 +96,7 @@
         },
         {
             "TYPE":"mesh",
-            "MATERIAL":"Glass",
+            "MATERIAL":"specular_white",
             "FILE":"../scenes/Assets/Avocado.gltf",
             "TRANS":[0.0,2.0,3.0],
             "ROTAT":[-55.0,180.0,0.0],

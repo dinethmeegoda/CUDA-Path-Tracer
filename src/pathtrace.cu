@@ -237,11 +237,14 @@ __global__ void computeIntersections(
     {
         PathSegment pathSegment = pathSegments[path_index];
 
-        float t;
         glm::vec3 intersect_point;
         glm::vec3 normal;
 		glm::vec2 uv;
         int meshId = 0;
+  
+#define BVH
+#ifndef BVH
+        float t;
         float t_min = FLT_MAX;
         int hit_geom_index = -1;
         bool outside = true;
@@ -250,9 +253,7 @@ __global__ void computeIntersections(
         glm::vec3 tmp_normal;
         glm::vec2 tmp_uv;
         int temp_meshId = 0;
-
         // naive parse through global geoms
-
         for (int i = 0; i < geoms_size; i++)
         {
             Geom& geom = geoms[i];
@@ -268,12 +269,7 @@ __global__ void computeIntersections(
             // TODO: add more intersection tests here... triangle? metaball? CSG?
             else if (geom.type == MESH)
             {
-#define BVH
-#ifdef BVH
-                t = bvhMeshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, tris, bvhnodes, temp_meshId);
-#else 
 				t = meshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, tris, geom.triangleStart, geom.triangleEnd);
-#endif
             }
 
             // Compute the minimum t from the intersection tests to determine what
@@ -298,14 +294,31 @@ __global__ void computeIntersections(
         {
             // The ray hits something
             intersections[path_index].t = t_min;
-            intersections[path_index].materialId = geoms[meshId].materialid;
+            intersections[path_index].materialId = geoms[hit_geom_index].materialid;
             intersections[path_index].surfaceNormal = normal;
 			intersections[path_index].uv = uv;
-            intersections[path_index].hasUV = geoms[meshId].usesUVs;
-            if (geoms[meshId].usesUVs) {
-                intersections[path_index].texid = meshId;
+            intersections[path_index].hasUV = geoms[hit_geom_index].usesUVs;
+            if (geoms[hit_geom_index].usesUVs) {
+                intersections[path_index].texid = geoms[hit_geom_index].textureStart;
             }
         }
+#endif
+#ifdef BVH
+        intersections[path_index].t = bvhMeshIntersectionTest(geoms, pathSegment.ray, intersect_point, normal, uv, tris, bvhnodes, meshId);
+		if (intersections[path_index].t < 0.0f) {
+            // Hit nothing
+			intersections[path_index].t = -1.0f;
+			pathSegment.remainingBounces = 0;
+		}
+        intersections[path_index].materialId = geoms[meshId].materialid;
+        intersections[path_index].surfaceNormal = normal;
+        intersections[path_index].uv = uv;
+        intersections[path_index].hasUV = geoms[meshId].usesUVs;
+        if (geoms[meshId].usesUVs) {
+            intersections[path_index].texid = geoms[meshId].textureStart;
+        }
+
+#endif
     }
 }
 

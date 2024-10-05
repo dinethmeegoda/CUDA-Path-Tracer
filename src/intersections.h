@@ -73,7 +73,7 @@ __host__ __device__ float sphereIntersectionTest(
     bool& outside);
 
 __host__ __device__ float bvhMeshIntersectionTest(
-    Geom mesh,
+    Geom* meshes,
     Ray r,
     glm::vec3& intersectionPoint,
     glm::vec3& normal,
