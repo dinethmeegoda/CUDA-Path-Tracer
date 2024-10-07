@@ -8,6 +8,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/random.h>
 #include <thrust/remove.h>
+#include <OpenImageDenoise/oidn.hpp>
 
 #include "sceneStructs.h"
 #include "scene.h"
@@ -64,7 +65,7 @@ __host__ __device__ glm::vec3 wl_rgb(int wavelength) {
     glm::vec3 rgb;
     rgb.r = 3.2404542 * x - 1.5371385 * y - 0.4985314 * z;
     rgb.g = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z;
-    rgb.b = 0.0556434 * x - 0.2040259 * y + 1.0572252 * z;
+    rgb.b = (0.0556434 * x - 0.2040259 * y + 1.0572252 * z) * 1.9f;
     return glm::clamp(rgb, 0.f, 1.f);
 }
 
@@ -79,6 +80,7 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution, int iter, glm
         int index = x + (y * resolution.x);
         glm::vec3 pix = image[index];
 
+		// TODO: Implement Gamma Correction here with Reinhardt Operator
         glm::ivec3 color;
         color.x = glm::clamp((int)(pix.x / iter * 255.0), 0, 255);
         color.y = glm::clamp((int)(pix.y / iter * 255.0), 0, 255);
@@ -105,6 +107,19 @@ static Triangle* dev_triangles = NULL;
 static Texture* dev_textures = NULL;
 static glm::vec3* dev_texture_data = NULL;
 static BVHNode* dev_bvhNodes = NULL;
+
+#define DENOISE 1
+
+#ifdef DENOISE
+// OIDN Stuff
+static oidn::DeviceRef oidn_device;
+static glm::vec3* dev_oidn_albedo = NULL;
+static glm::vec3* dev_oidn_normal = NULL;
+static glm::vec3* dev_oidn_output = NULL;
+#endif
+
+static glm::vec4* dev_environmentMap = NULL;
+static glm::vec2* dev_environmentMapSize = NULL;
 
 
 void InitDataContainer(GuiDataContainer* imGuiData)
@@ -137,6 +152,24 @@ void pathtraceInit(Scene* scene)
 
 	// Constant Memory for CIE 1964 data for Wavelength Dispersion
 	cudaMemcpyToSymbol(cie_1964_dev_data, cie_1964_host_data, 471 * sizeof(glm::vec3));
+
+#ifdef DENOISE
+    // OIDN Memory Allocation
+
+    oidn_device = oidnNewDevice(OIDN_DEVICE_TYPE_CUDA);
+	oidn_device.commit();
+
+	cudaMalloc(&dev_oidn_albedo, pixelcount * sizeof(glm::vec3));
+	cudaMemset(dev_oidn_albedo, 0, pixelcount * sizeof(glm::vec3));
+
+	cudaMalloc(&dev_oidn_normal, pixelcount * sizeof(glm::vec3));
+	cudaMemset(dev_oidn_normal, 0, pixelcount * sizeof(glm::vec3));
+
+	cudaMalloc(&dev_oidn_output, pixelcount * sizeof(glm::vec3));
+	cudaMemset(dev_oidn_output, 0, pixelcount * sizeof(glm::vec3));
+#endif
+
+
     checkCUDAError("pathtraceInit");
 
     // For Meshes
@@ -158,6 +191,19 @@ void pathtraceInit(Scene* scene)
 
     }
 
+    if (scene->envMap != NULL) {
+
+        glm::vec2 size = glm::vec2(scene->envMap->width, scene->envMap->height);
+
+        cudaMalloc(&dev_environmentMapSize, sizeof(glm::vec2));
+        cudaMemcpy(dev_environmentMapSize, &(size), sizeof(glm::vec2), cudaMemcpyHostToDevice);
+        checkCUDAError("pathtraceInit");
+        if (size != glm::vec2(0, 0)) {
+            cudaMalloc(&dev_environmentMap, scene->envMapData.size() * sizeof(glm::vec4));
+            cudaMemcpy(dev_environmentMap, scene->envMapData.data(), scene->envMapData.size() * sizeof(glm::vec4), cudaMemcpyHostToDevice);
+        }
+    }
+
 	checkCUDAError("pathtraceInit");
 
 }
@@ -174,6 +220,15 @@ void pathtraceFree()
 	cudaFree(dev_textures);
 	cudaFree(dev_texture_data);
     cudaFree(dev_bvhNodes);
+
+#ifdef DENOISE
+	cudaFree(dev_oidn_albedo);
+	cudaFree(dev_oidn_normal);
+	cudaFree(dev_oidn_output);
+#endif
+
+	cudaFree(dev_environmentMap);
+	cudaFree(dev_environmentMapSize);
 
     checkCUDAError("pathtraceFree");
 }
@@ -197,6 +252,8 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
 
         segment.ray.origin = cam.position;
 
+        // TODO: Depth Of Field
+
         // antialiasing by jittering the ray
 
 		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, traceDepth);
@@ -217,7 +274,6 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
     }
 }
 
-// TODO:
 // computeIntersections handles generating ray intersections ONLY.
 // Generating new rays is handled in your shader(s).
 // Feel free to modify the code below.
@@ -275,6 +331,9 @@ __global__ void computeIntersections(
 				t = meshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, tris, geom.triangleStart, geom.triangleEnd);
 #endif
             }
+            else if (geom.type == SDF) {
+                // Insert Scene SDF Function Here w/ Procedural Texture
+            }
 
             // Compute the minimum t from the intersection tests to determine what
             // scene geometry object was hit first.
@@ -290,7 +349,8 @@ __global__ void computeIntersections(
         }
 
         if (hit_geom_index == -1)
-        {
+        {   
+            // TODO: ENV Mappig
             intersections[path_index].t = -1.0f;
 			pathSegment.remainingBounces = 0;
         }
@@ -373,11 +433,16 @@ __global__ void shadeFakeMaterial(
 __global__ void shadeMaterial(
     int iter,
     int num_paths,
+    int depth,
     ShadeableIntersection* shadeableIntersections,
     PathSegment* pathSegments,
     Material* materials,
     Texture* textureMaps,
-    glm::vec3* textureColors)
+	glm::vec2* envMapSize,
+	glm::vec4* envMap,
+    glm::vec3* textureColors,
+    glm::vec3* oidn_albedo_buffer,
+    glm::vec3* oidn_normal_buffer)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < num_paths)
@@ -389,8 +454,23 @@ __global__ void shadeMaterial(
 		}
 
         ShadeableIntersection intersection = shadeableIntersections[idx];
-        if (intersection.t > 0.0f) // if the intersection exists...
+        if (intersection.t > 0.f) // if the intersection exists...
         {
+            glm::vec3 textureCol = glm::vec3(-1.0f);
+            // Get the texture color
+            if (intersection.hasUV) {
+                int x = glm::min(textureMaps[intersection.texid].width * intersection.uv.x, textureMaps[intersection.texid].width - 1.0f);
+                int y = glm::min(textureMaps[intersection.texid].height * intersection.uv.y, textureMaps[intersection.texid].height - 1.0f);
+                int idx = textureMaps[intersection.texid].width * y + x + textureMaps[intersection.texid].startIndex;
+                textureCol = textureColors[idx];
+            }
+#ifdef DENOISE
+            if (depth == 1) {
+				oidn_albedo_buffer[idx] += intersection.hasUV ? textureCol : materials[intersection.materialId].color;
+                oidn_normal_buffer[idx] += 0.5f * (intersection.surfaceNormal + 1.0f);
+            }
+#endif
+
             // Set up the RNG
             Material material = materials[intersection.materialId];
 
@@ -411,16 +491,6 @@ __global__ void shadeMaterial(
 				// Get the intersection point
 				glm::vec3 intersect = ray.origin + ray.direction * intersection.t;
 
-				glm::vec3 textureCol = glm::vec3(-1.0f);
-
-				// Get the texture color
-                if (intersection.hasUV) {
-					int x = glm::min(textureMaps[intersection.texid].width * intersection.uv.x, textureMaps[intersection.texid].width - 1.0f);
-					int y = glm::min(textureMaps[intersection.texid].height * intersection.uv.y, textureMaps[intersection.texid].height - 1.0f);
-					int idx = textureMaps[intersection.texid].width * y + x + textureMaps[intersection.texid].startIndex;
-					textureCol = textureColors[idx];
-                }
-
                 scatterRay(pathSegments[idx], intersect, intersection.surfaceNormal, material, rng, textureCol);
 
             }
@@ -430,10 +500,41 @@ __global__ void shadeMaterial(
             // This can be useful for post-processing and image compositing.
         }
         else {
-            pathSegments[idx].color = glm::vec3(0.0f);
+            //pathSegments[idx].color = glm::vec3(0.0f);
+
+			//Environment Mapping
+            if (envMapSize != NULL && envMap != NULL) {
+                glm::vec3 dir = pathSegments[idx].ray.direction;
+                float theta = acosf(dir.y), phi = atan2f(dir.z, dir.x);
+
+                float u = (phi + PI) * 1.f / (2 * PI);
+                float v = theta / PI;
+                int tex_x_idx = glm::fract(u) * envMapSize[0].x;
+                int tex_y_idx = glm::fract(v) * envMapSize[0].y;
+                int tex_1d_idx = tex_y_idx * envMapSize[0].x + tex_x_idx;
+                pathSegments[idx].color *= glm::vec3(envMap[tex_1d_idx]);
+                if (depth == 1) {
+					oidn_albedo_buffer[idx] += pathSegments[idx].color;
+                }
+            }
+            else {
+				pathSegments[idx].color = glm::vec3(0.0f);
+            }
+
 			pathSegments[idx].remainingBounces = 0;
         }
     }
+}
+
+__global__ void normalizeImages(int iteration, int pixel_count, glm::vec3* albedo_buffer, glm::vec3* normal_buffer)
+{
+	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+	if (index < pixel_count)
+	{
+		albedo_buffer[index] = albedo_buffer[index] / (float)iteration;
+		normal_buffer[index] = normal_buffer[index] / (float)iteration;
+	}
 }
 
 // Add the current iteration's output to the overall image
@@ -446,6 +547,46 @@ __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iteration
         PathSegment iterationPath = iterationPaths[index];
         image[iterationPath.pixelIndex] += iterationPath.color;
     }
+}
+
+__global__ void blendImages(glm::vec3* image, glm::vec3* image2, int pixelCount, float fract)
+{
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < pixelCount) {
+        image[idx] = image[idx] * fract + image2[idx] * (1.f - fract);
+		// Reinhardt Operator
+		image[idx] /= 1.f + image[idx];
+        
+        // Gamma Correction
+        float gamma = 2.2f;
+		image[idx] = glm::pow(image[idx], glm::vec3(1.0f / gamma));
+    }
+}
+
+void denoise(const glm::vec2 resolution) {
+    oidn::FilterRef filter = oidn_device.newFilter("RT");
+    filter.setImage("color", dev_image, oidn::Format::Float3, resolution.x, resolution.y);
+    filter.setImage("albedo", dev_oidn_albedo, oidn::Format::Float3, resolution.x, resolution.y);
+    filter.setImage("normal", dev_oidn_normal, oidn::Format::Float3, resolution.x, resolution.y);
+    filter.setImage("output", dev_oidn_output, oidn::Format::Float3, resolution.x, resolution.y);
+    filter.set("hdr", true);
+    filter.set("cleanAux", true);
+    filter.commit();
+
+	oidn::FilterRef albedo_filter = oidn_device.newFilter("RT");
+	albedo_filter.setImage("color", dev_oidn_albedo, oidn::Format::Float3, resolution.x, resolution.y);
+	albedo_filter.setImage("output", dev_oidn_albedo, oidn::Format::Float3, resolution.x, resolution.y);
+	albedo_filter.commit();
+
+	oidn::FilterRef normal_filter = oidn_device.newFilter("RT");
+	normal_filter.setImage("normal", dev_oidn_normal, oidn::Format::Float3, resolution.x, resolution.y);
+	normal_filter.setImage("output", dev_oidn_normal, oidn::Format::Float3, resolution.x, resolution.y);
+	normal_filter.commit();
+
+	albedo_filter.execute();
+	normal_filter.execute();
+
+    filter.execute();
 }
 
 // Predicate for stream compaction
@@ -573,15 +714,33 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 		thrust::stable_sort_by_key(dev_intersections_ptr, dev_intersections_ptr + num_paths, dev_paths_ptr, compare_material());
 #endif
 
-		shadeMaterial <<<numblocksPathSegmentTracing, blockSize1d >>> (
-			iter,
-			num_paths,
-			dev_intersections,
-			dev_paths,
-			dev_materials,
-			dev_textures,
-			dev_texture_data
-			);
+#ifdef DENOISE
+       shadeMaterial <<<numblocksPathSegmentTracing, blockSize1d >>> (
+            iter,
+            num_paths,
+            depth,
+            dev_intersections,
+            dev_paths,
+            dev_materials,
+            dev_textures,
+            dev_environmentMapSize,
+		    dev_environmentMap,
+            dev_texture_data,
+            dev_oidn_albedo,
+            dev_oidn_normal);
+#else
+       shadeMaterial << <numblocksPathSegmentTracing, blockSize1d >> > (
+            iter,
+            num_paths,
+            depth,
+            dev_intersections,
+            dev_paths,
+            dev_materials,
+            dev_textures,
+            dev_texture_data,
+            nullptr,
+            nullptr);
+#endif
 
 #define STREAM_COMPACTION 1
 #if STREAM_COMPACTION
@@ -606,12 +765,22 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
     ///////////////////////////////////////////////////////////////////////////
 
+#ifdef DENOISE
+	// Denoise the image
+    if (iter % 10 == 0) {
+        normalizeImages << <numBlocksPixels, blockSize1d >> > (iter, pixelcount, dev_oidn_albedo, dev_oidn_normal);
+        denoise(cam.resolution);
+        blendImages << <numBlocksPixels, blockSize1d >> > (dev_image, dev_oidn_output, pixelcount, 0.5);
+    }
+
+#endif
+
+    ///////////////////////////////////////////////////////////////////////////
+
     // Send results to OpenGL buffer for rendering
     sendImageToPBO<<<blocksPerGrid2d, blockSize2d>>>(pbo, cam.resolution, iter, dev_image);
 
-    // Retrieve image from GPU
     cudaMemcpy(hst_scene->state.image.data(), dev_image,
         pixelcount * sizeof(glm::vec3), cudaMemcpyDeviceToHost);
-
     checkCUDAError("pathtrace");
 }

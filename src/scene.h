@@ -85,6 +85,8 @@ public:
     std::vector<Material> materials;
 	std::vector<Texture> textures;
     std::vector<glm::vec3> textureData;
+	std::unique_ptr<Texture> envMap;
+	std::vector<glm::vec4> envMapData;
 
 	// For BVH
 	int nodesUsed = 1;

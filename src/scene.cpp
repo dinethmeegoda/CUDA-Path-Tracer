@@ -44,6 +44,7 @@ void Scene::loadGLTFMesh(const std::string& og_filename, Geom &newGeom) {
             tinygltf::Buffer& positionBuffer = model.buffers[posBufferView.buffer];
             float* positions = reinterpret_cast<float*>(&(positionBuffer.data[posBufferView.byteOffset + posAccessor.byteOffset]));
 
+			// Load Albedo Texture
 			int index = model.materials[primitive.material].pbrMetallicRoughness.baseColorTexture.index;
 			if (primitive.material >= 0 && index >= 0) {
 				tinygltf::Texture& texture = model.textures[index];
@@ -169,6 +170,19 @@ void Scene::loadFromJSON(const std::string& jsonName)
         MatNameToID[name] = materials.size();
         materials.emplace_back(newMaterial);
     }
+    const auto& mapData = data["EnvironmentMap"];
+    const auto& file = mapData["FILE"];
+    std::string str = file;
+    envMap = std::make_unique<Texture>();
+    envMap->id = textures.size();
+    envMap->startIndex = envMapData.size();
+    float* envTexture = stbi_loadf(str.c_str(), &envMap->width, &envMap->height, &envMap->numChannels, 0);
+    for (int i = 0; i < envMap->width * envMap->height; i++) {
+        envMapData.push_back(glm::vec4(envTexture[i * envMap->numChannels], envTexture[i * envMap->numChannels + 1], envTexture[i * envMap->numChannels + 2], envTexture[i * envMap->numChannels + 3]));
+    }
+    envMap->endIndex = envMapData.size() - 1;
+    stbi_image_free(envTexture);
+
     const auto& objectsData = data["Objects"];
     for (const auto& p : objectsData)
     {

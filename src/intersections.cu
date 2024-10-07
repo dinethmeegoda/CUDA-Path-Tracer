@@ -214,6 +214,7 @@ __host__ __device__ float bvhMeshIntersectionTest(
 
     barycentric = barycentricInterpolation(intersection, v1.pos, v2.pos, v3.pos);
 
+	// TODO Add Bump Mapping with Normal Interpolation and Hard Normals
     normal = mesh.usesNormals ? barycentric.x * v1.nor + barycentric.y * v2.nor + barycentric.z * v3.nor :
         glm::normalize(glm::cross(v2.pos - v1.pos, v3.pos - v1.pos));
 
