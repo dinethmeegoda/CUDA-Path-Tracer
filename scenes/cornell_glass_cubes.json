@@ -28,7 +28,7 @@
             "RGB":[1.0, 0.9, 0.9],
             "IOR":1.2,
             "ROUGHNESS":0.0,
-            "DISPERSION":0.9
+            "DISPERSION":0.0
         },
         "blue_glass":
         {
@@ -36,7 +36,7 @@
             "RGB":[0.7, 0.9, 1.0],
             "IOR":1.2,
             "ROUGHNESS":0.0,
-            "DISPERSION":0.5
+            "DISPERSION":0.0
         }
     },
     "Camera":

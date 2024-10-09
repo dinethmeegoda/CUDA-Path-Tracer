@@ -65,7 +65,7 @@ __host__ __device__ glm::vec3 wl_rgb(int wavelength) {
     glm::vec3 rgb;
     rgb.r = 3.2404542 * x - 1.5371385 * y - 0.4985314 * z;
     rgb.g = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z;
-    rgb.b = (0.0556434 * x - 0.2040259 * y + 1.0572252 * z) * 1.9f;
+    rgb.b = (0.0556434 * x - 0.2040259 * y + 1.0572252 * z) * 3.9f;
     return glm::clamp(rgb, 0.f, 1.f);
 }
 
@@ -79,12 +79,24 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution, int iter, glm
     {
         int index = x + (y * resolution.x);
         glm::vec3 pix = image[index];
+        //// Reinhardt Operator
+        //pix /= 1.f + pix;
+
+        //// Gamma Correction
+        //float gamma = 2.2f;
+        //pix = glm::pow(pix, glm::vec3(1.0f / gamma));
 
 		// TODO: Implement Gamma Correction here with Reinhardt Operator
         glm::ivec3 color;
+#ifndef DENOISE
         color.x = glm::clamp((int)(pix.x / iter * 255.0), 0, 255);
         color.y = glm::clamp((int)(pix.y / iter * 255.0), 0, 255);
         color.z = glm::clamp((int)(pix.z / iter * 255.0), 0, 255);
+#else
+        color.x = glm::clamp((int)(pix.x * 255.0), 0, 255);
+        color.y = glm::clamp((int)(pix.y * 255.0), 0, 255);
+        color.z = glm::clamp((int)(pix.z * 255.0), 0, 255);
+#endif
 
         // Each thread writes one pixel location in the texture (textel)
         pbo[index].w = 0;
@@ -108,13 +120,15 @@ static Texture* dev_textures = NULL;
 static glm::vec3* dev_texture_data = NULL;
 static BVHNode* dev_bvhNodes = NULL;
 
-#define DENOISE 1
-
 #ifdef DENOISE
 // OIDN Stuff
 static oidn::DeviceRef oidn_device;
+static glm::vec3* dev_oidn_color = NULL;
+static glm::vec3* dev_oidn_color_normalized = NULL;
 static glm::vec3* dev_oidn_albedo = NULL;
 static glm::vec3* dev_oidn_normal = NULL;
+static glm::vec3* dev_oidn_albedo_normalized = NULL;
+static glm::vec3* dev_oidn_normal_normalized = NULL;
 static glm::vec3* dev_oidn_output = NULL;
 #endif
 
@@ -159,11 +173,23 @@ void pathtraceInit(Scene* scene)
     oidn_device = oidnNewDevice(OIDN_DEVICE_TYPE_CUDA);
 	oidn_device.commit();
 
+	cudaMalloc(&dev_oidn_color, pixelcount * sizeof(glm::vec3));
+	cudaMemset(dev_oidn_color, 0, pixelcount * sizeof(glm::vec3));
+
+	cudaMalloc(&dev_oidn_color_normalized, pixelcount * sizeof(glm::vec3));
+	cudaMemset(dev_oidn_color_normalized, 0, pixelcount * sizeof(glm::vec3));
+
 	cudaMalloc(&dev_oidn_albedo, pixelcount * sizeof(glm::vec3));
 	cudaMemset(dev_oidn_albedo, 0, pixelcount * sizeof(glm::vec3));
 
 	cudaMalloc(&dev_oidn_normal, pixelcount * sizeof(glm::vec3));
 	cudaMemset(dev_oidn_normal, 0, pixelcount * sizeof(glm::vec3));
+
+	cudaMalloc(&dev_oidn_albedo_normalized, pixelcount * sizeof(glm::vec3));
+	cudaMemset(dev_oidn_albedo_normalized, 0, pixelcount * sizeof(glm::vec3));
+
+	cudaMalloc(&dev_oidn_normal_normalized, pixelcount * sizeof(glm::vec3));
+	cudaMemset(dev_oidn_normal_normalized, 0, pixelcount * sizeof(glm::vec3));
 
 	cudaMalloc(&dev_oidn_output, pixelcount * sizeof(glm::vec3));
 	cudaMemset(dev_oidn_output, 0, pixelcount * sizeof(glm::vec3));
@@ -222,8 +248,12 @@ void pathtraceFree()
     cudaFree(dev_bvhNodes);
 
 #ifdef DENOISE
+	cudaFree(dev_oidn_color);
+	cudaFree(dev_oidn_color_normalized);
 	cudaFree(dev_oidn_albedo);
 	cudaFree(dev_oidn_normal);
+	cudaFree(dev_oidn_albedo_normalized);
+	cudaFree(dev_oidn_normal_normalized);
 	cudaFree(dev_oidn_output);
 #endif
 
@@ -324,7 +354,6 @@ __global__ void computeIntersections(
             // TODO: add more intersection tests here... triangle? metaball? CSG?
             else if (geom.type == MESH)
             {
-#define BVH
 #ifdef BVH
                 t = bvhMeshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, tris, bvhnodes, temp_meshId);
 #else 
@@ -466,8 +495,8 @@ __global__ void shadeMaterial(
             }
 #ifdef DENOISE
             if (depth == 1) {
-				oidn_albedo_buffer[idx] += intersection.hasUV ? textureCol : materials[intersection.materialId].color;
-                oidn_normal_buffer[idx] += 0.5f * (intersection.surfaceNormal + 1.0f);
+                oidn_albedo_buffer[pathSegments[idx].pixelIndex] += intersection.hasUV ? textureCol : materials[intersection.materialId].color;
+                oidn_normal_buffer[pathSegments[idx].pixelIndex] += 0.5f * (intersection.surfaceNormal + 1.0f);
             }
 #endif
 
@@ -514,7 +543,7 @@ __global__ void shadeMaterial(
                 int tex_1d_idx = tex_y_idx * envMapSize[0].x + tex_x_idx;
                 pathSegments[idx].color *= glm::vec3(envMap[tex_1d_idx]);
                 if (depth == 1) {
-					oidn_albedo_buffer[idx] += pathSegments[idx].color;
+					oidn_albedo_buffer[pathSegments[idx].pixelIndex] += pathSegments[idx].color;
                 }
             }
             else {
@@ -526,14 +555,15 @@ __global__ void shadeMaterial(
     }
 }
 
-__global__ void normalizeImages(int iteration, int pixel_count, glm::vec3* albedo_buffer, glm::vec3* normal_buffer)
+__global__ void normalizeImages(int iteration, int pixel_count, glm::vec3* color_buffer, glm::vec3* normalized_color_buffer, glm::vec3* albedo_buffer, glm::vec3* normal_buffer, glm::vec3* albedo_normalized_buffer, glm::vec3* normal_normalized_buffer)
 {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 
 	if (index < pixel_count)
 	{
-		albedo_buffer[index] = albedo_buffer[index] / (float)iteration;
-		normal_buffer[index] = normal_buffer[index] / (float)iteration;
+		normalized_color_buffer[index] = color_buffer[index] / (float)iteration;
+		albedo_normalized_buffer[index] = albedo_buffer[index] / (float)iteration;
+		normal_normalized_buffer[index] = normal_buffer[index] / (float)iteration;
 	}
 }
 
@@ -549,38 +579,34 @@ __global__ void finalGather(int nPaths, glm::vec3* image, PathSegment* iteration
     }
 }
 
-__global__ void blendImages(glm::vec3* image, glm::vec3* image2, int pixelCount, float fract)
+__global__ void blendImages(glm::vec3* image, glm::vec3* image2, glm::vec3* image3, int pixelCount, float fract, int iter)
 {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < pixelCount) {
         image[idx] = image[idx] * fract + image2[idx] * (1.f - fract);
-		// Reinhardt Operator
-		image[idx] /= 1.f + image[idx];
-        
-        // Gamma Correction
-        float gamma = 2.2f;
-		image[idx] = glm::pow(image[idx], glm::vec3(1.0f / gamma));
+		if (image3 != NULL) {
+            image3[idx] = image[idx] * (float)iter;
+		}
     }
 }
 
 void denoise(const glm::vec2 resolution) {
     oidn::FilterRef filter = oidn_device.newFilter("RT");
-    filter.setImage("color", dev_image, oidn::Format::Float3, resolution.x, resolution.y);
-    filter.setImage("albedo", dev_oidn_albedo, oidn::Format::Float3, resolution.x, resolution.y);
-    filter.setImage("normal", dev_oidn_normal, oidn::Format::Float3, resolution.x, resolution.y);
+    filter.setImage("color", dev_oidn_color_normalized, oidn::Format::Float3, resolution.x, resolution.y);
+    filter.setImage("albedo", dev_oidn_albedo_normalized, oidn::Format::Float3, resolution.x, resolution.y);
+    filter.setImage("normal", dev_oidn_normal_normalized, oidn::Format::Float3, resolution.x, resolution.y);
     filter.setImage("output", dev_oidn_output, oidn::Format::Float3, resolution.x, resolution.y);
     filter.set("hdr", true);
-    filter.set("cleanAux", true);
     filter.commit();
 
 	oidn::FilterRef albedo_filter = oidn_device.newFilter("RT");
-	albedo_filter.setImage("color", dev_oidn_albedo, oidn::Format::Float3, resolution.x, resolution.y);
-	albedo_filter.setImage("output", dev_oidn_albedo, oidn::Format::Float3, resolution.x, resolution.y);
+	albedo_filter.setImage("color", dev_oidn_albedo_normalized, oidn::Format::Float3, resolution.x, resolution.y);
+	albedo_filter.setImage("output", dev_oidn_albedo_normalized, oidn::Format::Float3, resolution.x, resolution.y);
 	albedo_filter.commit();
 
 	oidn::FilterRef normal_filter = oidn_device.newFilter("RT");
-	normal_filter.setImage("normal", dev_oidn_normal, oidn::Format::Float3, resolution.x, resolution.y);
-	normal_filter.setImage("output", dev_oidn_normal, oidn::Format::Float3, resolution.x, resolution.y);
+	normal_filter.setImage("normal", dev_oidn_normal_normalized, oidn::Format::Float3, resolution.x, resolution.y);
+	normal_filter.setImage("output", dev_oidn_normal_normalized, oidn::Format::Float3, resolution.x, resolution.y);
 	normal_filter.commit();
 
 	albedo_filter.execute();
@@ -761,16 +787,29 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
     // Assemble this iteration and apply it to the image
     dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
-    finalGather<<<numBlocksPixels, blockSize1d>>>(pixelcount, dev_image, dev_paths);
+#ifdef DENOISE
+    finalGather<<<numBlocksPixels, blockSize1d>>>(pixelcount, dev_oidn_color, dev_paths);
+#else
+	finalGather << <numBlocksPixels, blockSize1d >> > (pixelcount, dev_image, dev_paths);
+#endif
 
     ///////////////////////////////////////////////////////////////////////////
 
 #ifdef DENOISE
+	int denoise_iter = 100;
 	// Denoise the image
-    if (iter % 10 == 0) {
-        normalizeImages << <numBlocksPixels, blockSize1d >> > (iter, pixelcount, dev_oidn_albedo, dev_oidn_normal);
+    if (iter < denoise_iter) {
+        normalizeImages << <numBlocksPixels, blockSize1d >> > (iter, pixelcount, dev_oidn_color, dev_oidn_color_normalized, dev_oidn_albedo, dev_oidn_normal, dev_oidn_albedo_normalized, dev_oidn_normal_normalized);
+        blendImages << <numBlocksPixels, blockSize1d >> > (dev_image, dev_oidn_color_normalized, NULL, pixelcount, 0.f, iter);
+    }
+    if (iter % denoise_iter == 0) {
+        normalizeImages << <numBlocksPixels, blockSize1d >> > (iter, pixelcount, dev_oidn_color, dev_oidn_color_normalized, dev_oidn_albedo, dev_oidn_normal, dev_oidn_albedo_normalized, dev_oidn_normal_normalized);
         denoise(cam.resolution);
-        blendImages << <numBlocksPixels, blockSize1d >> > (dev_image, dev_oidn_output, pixelcount, 0.5);
+        blendImages << <numBlocksPixels, blockSize1d >> > (dev_image, dev_oidn_output, dev_oidn_color, pixelcount, 0.3f, iter);
+    }
+    else {
+        normalizeImages << <numBlocksPixels, blockSize1d >> > (iter, pixelcount, dev_oidn_color, dev_oidn_color_normalized, dev_oidn_albedo, dev_oidn_normal, dev_oidn_albedo_normalized, dev_oidn_normal_normalized);
+        blendImages << <numBlocksPixels, blockSize1d >> > (dev_image, dev_oidn_color_normalized, NULL, pixelcount, 0.5f, iter);
     }
 
 #endif

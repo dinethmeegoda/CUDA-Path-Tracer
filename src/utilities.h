@@ -14,6 +14,15 @@
 #define SQRT_OF_ONE_THIRD 0.5773502691896257645091487805019574556476f
 #define EPSILON           0.00001f
 
+// Debugging Options:
+#define DEBUG_ALBEDO      0
+
+// Pathtracer Options:
+#define ANTIALIASING      1
+#define DENOISE		      1
+#define DISPERSION		  1
+#define BVH               1
+
 class GuiDataContainer
 {
 public:

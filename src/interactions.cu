@@ -152,7 +152,6 @@ __host__ __device__ void scatterRay(
 	float pdf;
 	bool ignore_pdf = true;
 
-#define DEBUG_ALBEDO 0
 #if DEBUG_ALBEDO
     pathSegment.color = texture_color[0] == -1.0f ? m.color: texture_color;
     pathSegment.remainingBounces = 0;
@@ -163,7 +162,6 @@ __host__ __device__ void scatterRay(
     // calculateRandomDirectionInHemisphere defined above.
     if (m.hasReflective && m.hasRefractive) {
 		// Transparent and reflective material like glass
-#define DISPERSION 1
 #if DISPERSION
         float consumeChance = 1 - presence(pathSegment.color, m.color);
         thrust::uniform_real_distribution<float> u01(0.f, 0.1f);
