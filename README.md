@@ -153,7 +153,7 @@ Then the image was gamma corrected from the RGB value of a pixel to the actual l
 <table>
   <tr>
     <td>
-      <img src="img/noRnoG.png" alt="Image 1" width="600"/>
+      <img src="img/noRorG.png" alt="Image 1" width="600"/>
       <p align="center">Without Reinhard Operator & Gamma Correction</p>
     </td>
     <td>
