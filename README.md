@@ -25,8 +25,6 @@ For more on path tracing, check out [PBRT](https://pbr-book.org/4ed/contents), w
   - [Reinhard Operator & Gamma Correction](#reinhard-operator--gamma-correction)
   - [Environment Mapping](#environment-mapping)
   - [Ray Dispersion](#ray-dispersion)
-  - [Proceudral Shapes](#procedural-shapes)
-  - [Procedural Textures](#procedural-textures)
   - [Denoising](#denoising)
 - Performance Features:
   - [Bounding Volume Heirarchy](#bounding-volume-hierarchy)
@@ -228,10 +226,6 @@ Although this creates colorful effects, the image visibly converges slower since
 </table>
 </div>
 
-### Procedural Shapes
-
-### Procedural Textures
-
 ### Denoising
 
 Finally, even if we waited for 5000 samples per pixel, most of these images would not have looked very smooth. This is where denoising comes in. I implemented Intel's [Open Image Denoise Library](https://www.openimagedenoise.org/) within my pathtracer to help speed things along and look better. The Library is a pretrained machine learning algorithm built to denoise rendered/path traced images.
@@ -263,11 +257,15 @@ To aid with this, I passed in prefiltered (denoised themselves) albedo and norma
 </table>
 </div>
 
-The image denoises through a preset frame interval. If we set the denoiser to run often (ex. every other frame), we get a less accurate image, but sometimes it can look pretty painterly.
+The image denoises through a preset frame interval. If we set the denoiser to run often (ex. every other frame), we get a less accurate image, but sometimes it can look pretty painterly/stylized.
+
+<div align="center">
+<img src="img/painterly.png" alt="Image 2" width="600"/>
+</div>
 
 ## Performance Features
 
-Next, I'll go through the features I implemented to make things faster, as well as a performance comparison.
+Next, I'll go through the features I implemented to make things faster, as well as a performance comparison. For the majority of these toggles, I used preprocessor Macro Definitons in `utilities.h`.
 
 ### Bounding Volume Hierarchy
 
@@ -277,20 +275,84 @@ The structure that I implemented was a Bounding Volume Hierarchy, or BVH. This i
 
 #### BVH Performance Based on Scene Complexity
 
+<img src="img/dragon.png" alt="Image 1" width="300"/>
+
+To test the performance of the BVH, I recorded the average FPS and time taken to build the tree. This was done in an open scene with an environment map and one type of model. The model had a regular white diffuse material with no texturing. Denoising and Dispersion were turned off. The Saul model contained 2109 triangles so it was duplicated around the scene for subsequent trials between 2k to 33k Triangles. I used the Stanford Dragon Model for the 91k to 364k triangles trials since it had a larger amount of base triangles.
+
+<img src="img/bvhGraph.png" alt="Image 1" width="600"/>
+
+From looking at the data, we can easily tell that there's a big speed up to be gained from using the BVH in every case above 2000 triangles. The performance does fall quick as more triangles are in the scene, but it is most definitely preferable to not using an acceleration structure. The BVH is set to stop building nodes when they have 8 or more triangles, meaning after traversing at most log(n) triangles, there are at most 8 triangles that we have to test intersections on. This is almost always preferable to naively checking each triangle. The potential slow down for a BVH is for lower triangle scenes in which the time taken to traverse the BVH is not worth it. As for the building time, it seems to increase exponentially, but as it only happens once before the scene and is still a fraction of a second, this is not a problem.
+
 ### Stream Compaction
+
+When we path trace, if a ray doesn't intersect anything on any bounce, we stop following it. But we still launch the thread that ends up doing nothing. Instead, we can use Stream Compaction to sort the array of paths in parallel such that all rays that still have to bounce are in the front. This helps with warp divergence and decreases warp sizes so that threads that perform similarly will be in the same warp. The stream compaction was implemented with the Thrust Library.
 
 #### Scene Performance with Stream Compaction
 
+To test Stream Compaction Performance, I ran both a closed and open scene with the denoiser disabled, and with one model with texturing disabled. The model was a glTF mesh and utilized the BVH data structure and traversal.
+
+<img src="img/streamCompactGraph.png" alt="Image 1" width="600"/>
+
+We can see a big speed up for using compaction in the open scene as depth increases. This makes since since rays will usually bounce once before running out of meshes to intersect in an open scene. Although the overhead cost of compacting the stream each depth iteration causes it to be slower when the trace depth is low, we will realistically not use that amount of trace depth in order to get an accurate render. In a closed scene, the benefits of stream compaction are not as great and only start being obvious at higher trace depths, but as these are more reliable trace depths for renders, using the stream compaction optimization is a good choice.
+
 ### Material Sorting
 
+Another optimization to also help with warp divergence is to sort rays by the type of material they intersected with before we go to shade them. Although we have the overhead cost of sorting the rays each depth iteration, this can help reduce warp divergence as threads on the same warp have a greater chance to perform the same instruction and not be locked since different materials perform different operations on the shader.
+
 #### Scene Performance with Material Sorting
+
+<img src="img/matSortGraph.png" alt="Image 1" width="600"/>
+
+Unfortunately, the material sort always results in a reduction of performance. The overhead cost is not worth the amount of materials in which we test this optimization. There might be a chance that this might be worth for scenes that contain hundreds's of materials, but this is not realistic for our purposes in this kind of path tracer.
 
 ## Bloopers
 
 Since this wasn't the easiest project to implement, here are some blooper images for fun!
 
+<img src="img/bloopers/bvhBox.png" alt="Image 1" width="600"/>
+
+Accidentally Visualized my BVH
+
+<img src="img/bloopers/denoiseMuch.png" alt="Image 1" width="600"/>
+
+Denoised into the Dark Dimension...
+
+<img src="img/bloopers/dividezero.png" alt="Image 1" width="600"/>
+
+I think I divided by zero somewhere
+
+<img src="img/bloopers/funnyTransmission.png" alt="Image 1" width="600"/>
+
+My path tracer is deterministic...is this real time rendering?
+
+<img src="img/bloopers/striped_avocado.png" alt="Image 1" width="600"/>
+
+I accidentally peeled my avocado with this BVH thing.
+
 ## References
 
 ### Models
 
+- [glTF Sample Models (Avocado, Dragon, etc.)](https://github.com/KhronosGroup/glTF-Sample-Models)
+
+- [Saul Goodman Model - by Cesar da Mata](https://sketchfab.com/3d-models/saul-goodman-531a84899eb44401a1ff5d8f735aa6ad)
+
 ### Resources
+
+- [PBRT](https://pbr-book.org/4ed/contents)
+
+- [Open Image Denoise Library](https://www.openimagedenoise.org/)
+
+- [Paul Bourke's SSAA Notes](https://paulbourke.net/miscellaneous/raytracing/)
+
+- [glTF Guide](https://www.slideshare.net/slideshow/gltf-20-reference-guide/78149291#1)
+
+- [glTF Parsing Troubleshooting](https://www.reddit.com/r/vulkan/comments/oeg87z/loading_some_indexed_gltf_meshes_cause_weird/)
+
+- [tinyglTF Library](https://github.com/syoyo/tinygltf)
+
+- [glTF Spec](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html)
+
+- [BVH Guide](https://jacco.ompf2.com/2022/04/13/how-to-build-a-bvh-part-1-basics/)
+
+- Adam Mally's CIS 5610 Class for teaching me Rendering, Environment Maps, and my previous Path Tracer.

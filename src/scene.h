@@ -80,7 +80,6 @@ public:
 
     std::vector<Geom> geoms;
 	std::vector<Triangle> triangles;
-	std::map<std::string, Geom*> meshes;
 
     std::vector<Material> materials;
 	std::vector<Texture> textures;

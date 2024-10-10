@@ -8,6 +8,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <chrono>
 
 #define PI                3.1415926535897932384626422832795028841971f
 #define TWO_PI            6.2831853071795864769252867665590057683943f
@@ -24,7 +25,7 @@
 #define TEXTURING         1
 #define BVH               1
 #define STREAM_COMPACTION 1
-#define MATERIAL_SORTING  1
+#define MATERIAL_SORTING  0
 
 class GuiDataContainer
 {

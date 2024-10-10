@@ -810,7 +810,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
     ///////////////////////////////////////////////////////////////////////////
 
 #if DENOISE
-	int denoise_iter = 1000;
+	int denoise_iter = 1;
 	// Denoise the image
     if (iter < denoise_iter) {
         normalizeImages << <numBlocksPixels, blockSize1d >> > (iter, pixelcount, dev_oidn_color, dev_oidn_color_normalized, dev_oidn_albedo, dev_oidn_normal, dev_oidn_albedo_normalized, dev_oidn_normal_normalized);

@@ -43,7 +43,7 @@
     },
     "EnvironmentMap":
     {
-        "FILE":"../scenes/Assets/Environments/plain.hdr"
+        "FILE":"../scenes/Assets/Environments/terrace.hdr"
     },
     "Objects":
     [

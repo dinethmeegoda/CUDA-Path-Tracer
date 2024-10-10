@@ -11,12 +11,6 @@ using json = nlohmann::json;
 
 void Scene::loadGLTFMesh(const std::string& og_filename, Geom &newGeom) {
     std::string filePrefix = og_filename.substr(0, og_filename.find_last_of("/") + 1);
-	// Check if mesh is already loaded
-    auto find = meshes.find(og_filename);
-	if (find != meshes.end()) {
-		std::cout << "Mesh already loaded" << std::endl;
-        return;
-	}
 	tinygltf::TinyGLTF loader;
 	tinygltf::Model model;
 	std::string err;
@@ -84,8 +78,6 @@ void Scene::loadGLTFMesh(const std::string& og_filename, Geom &newGeom) {
 		newGeom.triangleEnd = triangles.size() - 1;
         cout << "This mesh has : " << newGeom.triangleEnd - newGeom.triangleStart + 1 << " triangles" << endl;
         cout << "Total triangles : " << triangles.size() << " triangles" << endl;
-
-		meshes[og_filename] = &newGeom;
 
     }
 }
@@ -234,9 +226,12 @@ void Scene::loadFromJSON(const std::string& jsonName)
     // If there is a mesh, build BVH
 	if (triangles.size() > 0)
     {
+		std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
 		bvhNodes.resize(triangles.size() * 2 - 1);
-        //triangleIndices.resize(triangles.size());
 		buildBVH();
+		std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+		auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
+		std::cout << "BVH built in " << duration << "ms" << std::endl;
 	}
 
     const auto& cameraData = data["Camera"];
