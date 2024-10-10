@@ -110,23 +110,28 @@ __host__ __device__ glm::vec3 sample_f_glass(
     else {
         // Refraction
         glm::vec3 T = sample_f_specular_transmission(normal, rayDir, IOR, color, wiW);
-        //float absDot = glm::abs(glm::dot(normal, wiW));
-        //if (absDot == 0.0f) {
-        //    T = color;
-        //}
-        //else {
-        //    T = color / absDot;
-        //}
         return 2.0f * T * (1.0f - fresnel);
     }
 }
 
 __host__ __device__ glm::vec3 sample_f_specular_plastic(
-    glm::vec3 normal, glm::vec3 rayDir, Material,
-    glm::vec3 &wiW, thrust::default_random_engine& rng) {
-
-    wiW = glm::vec3(0, 1, 0);
-	return glm::vec3(1.0f, 0.0f, 0.0f);
+    glm::vec3 normal, glm::vec3 rayDir, glm::vec3 color, float roughness,
+    glm::vec3 &wiW, thrust::default_random_engine& rng, float& pdf) {
+    thrust::uniform_real_distribution<float> u01(0, 1);
+    float random = u01(rng);
+    if (random < (1.f - roughness)) {
+        // Reflection
+        wiW = glm::reflect(rayDir, normal);
+		pdf = 1.0f;
+        return color / glm::abs(glm::dot(wiW, normal));
+    }
+    else {
+        // Diffuse
+        glm::vec3 T = color / PI;
+        wiW = calculateRandomDirectionInHemisphere(normal, rng);
+        pdf = glm::cos(glm::acos(glm::dot(wiW, normal))) / PI;
+        return roughness > 0 ? 1 / roughness * T : T;
+    }
 }
 
 __host__ __device__ float presence_single(glm::vec3 a, glm::vec3 b) {
@@ -168,30 +173,22 @@ __host__ __device__ void scatterRay(
         if (u01(rng) < consumeChance) {
             return;
         }
-        //pathSegment.color = pathSegment.waveColor;
         bsdf = sample_f_glass(normal, pathSegment.ray.direction, 
             //m.indexOfRefraction,
             m.indexOfRefraction + m.dispersion * 1e5 / (pathSegment.waveLength * pathSegment.waveLength), 
             m.color,
             //pathSegment.waveColor, 
             wiW, rng);
-#endif
-#if !DISPERSION
+#else
             bsdf = sample_f_glass(normal, pathSegment.ray.direction, m.indexOfRefraction, m.color, wiW, rng);
 #endif
 		/*pdf = 1.0f;
 		ignore_pdf = false;*/
     }
     else if (m.hasPlastic) {
-        if (m.roughness == 0.f) {
-            // Reflective material that has color, like smooth plastic
-            bsdf = sample_f_specular_plastic(normal, glm::normalize(pathSegment.ray.direction), m, wiW, rng);
-		}
-		else {
-			// Reflective material that has color, like rough plastic
-			//bsdf = sample_f_ggx(normal, pathSegment.ray.direction, m, wiW, rng);
-		}
-		pdf = 1.0f;
+        // Reflective material that has color, like smooth plastic
+		glm::vec3 color = texture_color[0] == -1.0f ? m.color : texture_color;
+        bsdf = sample_f_specular_plastic(normal, glm::normalize(pathSegment.ray.direction), color, m.roughness, wiW, rng, pdf);
 		ignore_pdf = false;
     }
 	else if (m.hasReflective) {

@@ -79,16 +79,15 @@ __global__ void sendImageToPBO(uchar4* pbo, glm::ivec2 resolution, int iter, glm
     {
         int index = x + (y * resolution.x);
         glm::vec3 pix = image[index];
-        //// Reinhardt Operator
-        //pix /= 1.f + pix;
+        // Reinhardt Operator
+        pix /= 1.f + pix;
 
-        //// Gamma Correction
-        //float gamma = 2.2f;
-        //pix = glm::pow(pix, glm::vec3(1.0f / gamma));
+        // Gamma Correction
+        float gamma = 1.9f;
+        pix = glm::pow(pix, glm::vec3(1.0f / gamma));
 
-		// TODO: Implement Gamma Correction here with Reinhardt Operator
         glm::ivec3 color;
-#ifndef DENOISE
+#if !DENOISE
         color.x = glm::clamp((int)(pix.x / iter * 255.0), 0, 255);
         color.y = glm::clamp((int)(pix.y / iter * 255.0), 0, 255);
         color.z = glm::clamp((int)(pix.z / iter * 255.0), 0, 255);
@@ -120,7 +119,7 @@ static Texture* dev_textures = NULL;
 static glm::vec3* dev_texture_data = NULL;
 static BVHNode* dev_bvhNodes = NULL;
 
-#ifdef DENOISE
+#if DENOISE
 // OIDN Stuff
 static oidn::DeviceRef oidn_device;
 static glm::vec3* dev_oidn_color = NULL;
@@ -167,7 +166,7 @@ void pathtraceInit(Scene* scene)
 	// Constant Memory for CIE 1964 data for Wavelength Dispersion
 	cudaMemcpyToSymbol(cie_1964_dev_data, cie_1964_host_data, 471 * sizeof(glm::vec3));
 
-#ifdef DENOISE
+#if DENOISE
     // OIDN Memory Allocation
 
     oidn_device = oidnNewDevice(OIDN_DEVICE_TYPE_CUDA);
@@ -247,7 +246,7 @@ void pathtraceFree()
 	cudaFree(dev_texture_data);
     cudaFree(dev_bvhNodes);
 
-#ifdef DENOISE
+#if DENOISE
 	cudaFree(dev_oidn_color);
 	cudaFree(dev_oidn_color_normalized);
 	cudaFree(dev_oidn_albedo);
@@ -284,20 +283,29 @@ __global__ void generateRayFromCamera(Camera cam, int iter, int traceDepth, Path
 
         // TODO: Depth Of Field
 
+#if ANTIALIASING
         // antialiasing by jittering the ray
-
 		thrust::default_random_engine rng = makeSeededRandomEngine(iter, index, traceDepth);
-		thrust::uniform_real_distribution<float> u1_5(-1.5, 1.5);
+		thrust::uniform_real_distribution<float> u1_5(-0.5, 0.5);
 
         segment.ray.direction = glm::normalize(cam.view
             - cam.right * cam.pixelLength.x * ((float)x + u1_5(rng) - (float)cam.resolution.x * 0.5f)
             - cam.up * cam.pixelLength.y * ((float)y + u1_5(rng) - (float)cam.resolution.y * 0.5f)
         );
-
+#else
+		segment.ray.direction = glm::normalize(cam.view
+			- cam.right * cam.pixelLength.x * ((float)x - (float)cam.resolution.x * 0.5f)
+			- cam.up * cam.pixelLength.y * ((float)y - (float)cam.resolution.y * 0.5f)
+		);
+#endif
         // wavelength setting
+#if DISPERSION
         thrust::uniform_real_distribution<float> u01(0, 1);
         segment.waveLength = u01(rng) * 470 + 360;
 		segment.color = 3.0f * wl_rgb(segment.waveLength);
+#else
+		segment.color = glm::vec3(1.0f);
+#endif
 
         segment.pixelIndex = index;
         segment.remainingBounces = traceDepth;
@@ -354,7 +362,7 @@ __global__ void computeIntersections(
             // TODO: add more intersection tests here... triangle? metaball? CSG?
             else if (geom.type == MESH)
             {
-#ifdef BVH
+#if BVH
                 t = bvhMeshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, tris, bvhnodes, temp_meshId);
 #else 
 				t = meshIntersectionTest(geom, pathSegment.ray, tmp_intersect, tmp_normal, tmp_uv, tris, geom.triangleStart, geom.triangleEnd);
@@ -487,13 +495,15 @@ __global__ void shadeMaterial(
         {
             glm::vec3 textureCol = glm::vec3(-1.0f);
             // Get the texture color
+#if TEXTURING
             if (intersection.hasUV) {
                 int x = glm::min(textureMaps[intersection.texid].width * intersection.uv.x, textureMaps[intersection.texid].width - 1.0f);
                 int y = glm::min(textureMaps[intersection.texid].height * intersection.uv.y, textureMaps[intersection.texid].height - 1.0f);
                 int idx = textureMaps[intersection.texid].width * y + x + textureMaps[intersection.texid].startIndex;
                 textureCol = textureColors[idx];
             }
-#ifdef DENOISE
+#endif
+#if DENOISE
             if (depth == 1) {
                 oidn_albedo_buffer[pathSegments[idx].pixelIndex] += intersection.hasUV ? textureCol : materials[intersection.materialId].color;
                 oidn_normal_buffer[pathSegments[idx].pixelIndex] += 0.5f * (intersection.surfaceNormal + 1.0f);
@@ -542,9 +552,11 @@ __global__ void shadeMaterial(
                 int tex_y_idx = glm::fract(v) * envMapSize[0].y;
                 int tex_1d_idx = tex_y_idx * envMapSize[0].x + tex_x_idx;
                 pathSegments[idx].color *= glm::vec3(envMap[tex_1d_idx]);
+#if DENOISE
                 if (depth == 1) {
 					oidn_albedo_buffer[pathSegments[idx].pixelIndex] += pathSegments[idx].color;
                 }
+#endif
             }
             else {
 				pathSegments[idx].color = glm::vec3(0.0f);
@@ -590,6 +602,7 @@ __global__ void blendImages(glm::vec3* image, glm::vec3* image2, glm::vec3* imag
     }
 }
 
+#if DENOISE
 void denoise(const glm::vec2 resolution) {
     oidn::FilterRef filter = oidn_device.newFilter("RT");
     filter.setImage("color", dev_oidn_color_normalized, oidn::Format::Float3, resolution.x, resolution.y);
@@ -614,6 +627,7 @@ void denoise(const glm::vec2 resolution) {
 
     filter.execute();
 }
+#endif
 
 // Predicate for stream compaction
 struct is_path_terminated
@@ -732,7 +746,6 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             dev_materials
         );*/
 
-#define MATERIAL_SORTING 1
 #if MATERIAL_SORTING
 		// Sort the paths by material
 		thrust::device_ptr<ShadeableIntersection> dev_intersections_ptr(dev_intersections);
@@ -740,7 +753,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 		thrust::stable_sort_by_key(dev_intersections_ptr, dev_intersections_ptr + num_paths, dev_paths_ptr, compare_material());
 #endif
 
-#ifdef DENOISE
+#if DENOISE
        shadeMaterial <<<numblocksPathSegmentTracing, blockSize1d >>> (
             iter,
             num_paths,
@@ -763,12 +776,13 @@ void pathtrace(uchar4* pbo, int frame, int iter)
             dev_paths,
             dev_materials,
             dev_textures,
+		    dev_environmentMapSize,
+		    dev_environmentMap,
             dev_texture_data,
             nullptr,
             nullptr);
 #endif
 
-#define STREAM_COMPACTION 1
 #if STREAM_COMPACTION
 		// Stream compaction using thrust
         thrust::device_ptr<PathSegment> dev_compaction_paths(dev_paths);
@@ -787,7 +801,7 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
     // Assemble this iteration and apply it to the image
     dim3 numBlocksPixels = (pixelcount + blockSize1d - 1) / blockSize1d;
-#ifdef DENOISE
+#if DENOISE
     finalGather<<<numBlocksPixels, blockSize1d>>>(pixelcount, dev_oidn_color, dev_paths);
 #else
 	finalGather << <numBlocksPixels, blockSize1d >> > (pixelcount, dev_image, dev_paths);
@@ -795,8 +809,8 @@ void pathtrace(uchar4* pbo, int frame, int iter)
 
     ///////////////////////////////////////////////////////////////////////////
 
-#ifdef DENOISE
-	int denoise_iter = 100;
+#if DENOISE
+	int denoise_iter = 1000;
 	// Denoise the image
     if (iter < denoise_iter) {
         normalizeImages << <numBlocksPixels, blockSize1d >> > (iter, pixelcount, dev_oidn_color, dev_oidn_color_normalized, dev_oidn_albedo, dev_oidn_normal, dev_oidn_albedo_normalized, dev_oidn_normal_normalized);

@@ -140,9 +140,12 @@ void Scene::loadFromJSON(const std::string& jsonName)
 		}
 		else if (p["TYPE"] == "Plastic")
 		{
-			const auto& col = p["RGB"];
-			newMaterial.color = glm::vec3(col[0], col[1], col[2]);
-			newMaterial.hasPlastic = 1;
+            const auto& col = p["RGB"];
+            newMaterial.color = glm::vec3(col[0], col[1], col[2]);
+            newMaterial.hasReflective = 0;
+            newMaterial.hasRefractive = 0;
+            newMaterial.hasPlastic = 1;
+            newMaterial.roughness = p["ROUGHNESS"];
 		}
 		else if (p["TYPE"] == "Glass")
 		{

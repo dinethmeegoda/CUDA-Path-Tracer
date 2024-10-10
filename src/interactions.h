@@ -27,8 +27,8 @@ __host__ __device__ glm::vec3 sample_f_specular_transmission(
 	glm::vec3 &wiW);
 
 __host__ __device__ glm::vec3 sample_f_specular_plastic(
-	glm::vec3 normal, glm::vec3 rayDir, Material,
-	glm::vec3 &wiW, thrust::default_random_engine& rng);
+	glm::vec3 normal, glm::vec3 rayDir, glm::vec3 color, float roughness,
+	glm::vec3 &wiW, thrust::default_random_engine& rng, float &pdf);
 
 /**
  * Scatter a ray with some probabilities according to the material properties.

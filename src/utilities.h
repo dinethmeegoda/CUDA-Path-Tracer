@@ -21,7 +21,10 @@
 #define ANTIALIASING      1
 #define DENOISE		      1
 #define DISPERSION		  1
+#define TEXTURING         1
 #define BVH               1
+#define STREAM_COMPACTION 1
+#define MATERIAL_SORTING  1
 
 class GuiDataContainer
 {
