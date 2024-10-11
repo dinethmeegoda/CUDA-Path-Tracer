@@ -34,16 +34,16 @@
     },
     "EnvironmentMap":
     {
-        "FILE":"../scenes/Assets/Environments/terrace.hdr"
+        "FILE":"../scenes/Assets/Environments/street.hdr"
     },
     "Objects":
     [
         {
             "TYPE":"mesh",
             "MATERIAL":"diffuse_white",
-            "FILE":"../scenes/Assets/Saul/saul.gltf",
+            "FILE":"../scenes/Assets/Waltuh/waltuh.gltf",
             "TRANS":[0.0,0.0,0.0],
-            "ROTAT":[0.0,0.0,0.0],
+            "ROTAT":[0.0,300.0,0.0],
             "SCALE":[5.0,5.0,5.0]
         }
     ]
