@@ -344,6 +344,8 @@ I accidentally peeled my avocado with this BVH thing.
 
 - [Saul Goodman Model - by Cesar da Mata](https://sketchfab.com/3d-models/saul-goodman-531a84899eb44401a1ff5d8f735aa6ad)
 
+- [Walter White Model - by Miguel Vega](https://sketchfab.com/3d-models/walter-white-breaking-bad-cubic-worlds-1c40b9169f5c479f852002144ad67757)
+
 ### Resources
 
 - [PBRT](https://pbr-book.org/4ed/contents)
