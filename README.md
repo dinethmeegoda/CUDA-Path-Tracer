@@ -8,6 +8,13 @@
 
 ## Summary
 
+<div align="center">
+    <img src="img/waltuh.png" alt="bsdf" width="800"/>
+    <p align="center">All Hail the King.</p>
+</div>
+
+<br>
+
 This project is a foray into learning CUDA, specifically for graphics programming applications. The goal of this Path Tracer was to take the existing graphics concepts I'm already familiar with, and try to use parallel programming on the GPU with separate kernel invocations to 'simulate' the steps in the graphics pipeline that graphics frameworks typically abstract away. In the end, I wanted to implement as many visually striking features as I could to increase the number of tools I have to create pretty pictures, while making performance boosts to keep the path tracer usable for complex scenes.
 
 ### Path Tracing

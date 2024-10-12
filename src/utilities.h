@@ -16,7 +16,7 @@
 #define EPSILON           0.00001f
 
 // Debugging Options:
-#define DEBUG_ALBEDO      1
+#define DEBUG_ALBEDO      0
 
 // Pathtracer Options:
 #define ANTIALIASING      1

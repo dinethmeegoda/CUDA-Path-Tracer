@@ -604,13 +604,6 @@ __global__ void blendImages(glm::vec3* image, glm::vec3* image2, glm::vec3* imag
 
 #if DENOISE
 void denoise(const glm::vec2 resolution) {
-    oidn::FilterRef filter = oidn_device.newFilter("RT");
-    filter.setImage("color", dev_oidn_color_normalized, oidn::Format::Float3, resolution.x, resolution.y);
-    filter.setImage("albedo", dev_oidn_albedo_normalized, oidn::Format::Float3, resolution.x, resolution.y);
-    filter.setImage("normal", dev_oidn_normal_normalized, oidn::Format::Float3, resolution.x, resolution.y);
-    filter.setImage("output", dev_oidn_output, oidn::Format::Float3, resolution.x, resolution.y);
-    filter.set("hdr", true);
-    filter.commit();
 
 	oidn::FilterRef albedo_filter = oidn_device.newFilter("RT");
 	albedo_filter.setImage("color", dev_oidn_albedo_normalized, oidn::Format::Float3, resolution.x, resolution.y);
@@ -618,12 +611,20 @@ void denoise(const glm::vec2 resolution) {
 	albedo_filter.commit();
 
 	oidn::FilterRef normal_filter = oidn_device.newFilter("RT");
-	normal_filter.setImage("normal", dev_oidn_normal_normalized, oidn::Format::Float3, resolution.x, resolution.y);
+	normal_filter.setImage("color", dev_oidn_normal_normalized, oidn::Format::Float3, resolution.x, resolution.y);
 	normal_filter.setImage("output", dev_oidn_normal_normalized, oidn::Format::Float3, resolution.x, resolution.y);
 	normal_filter.commit();
 
-	albedo_filter.execute();
-	normal_filter.execute();
+    albedo_filter.execute();
+    normal_filter.execute();
+
+    oidn::FilterRef filter = oidn_device.newFilter("RT");
+    filter.setImage("color", dev_oidn_color_normalized, oidn::Format::Float3, resolution.x, resolution.y);
+    filter.setImage("albedo", dev_oidn_albedo_normalized, oidn::Format::Float3, resolution.x, resolution.y);
+    filter.setImage("normal", dev_oidn_normal_normalized, oidn::Format::Float3, resolution.x, resolution.y);
+    filter.setImage("output", dev_oidn_output, oidn::Format::Float3, resolution.x, resolution.y);
+    filter.set("hdr", true);
+    filter.commit();
 
     filter.execute();
 }
