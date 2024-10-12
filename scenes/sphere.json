@@ -34,7 +34,7 @@
     },
     "EnvironmentMap":
     {
-        "FILE":"../scenes/Assets/Environments/street.hdr"
+        "FILE":"../scenes/Assets/Environments/warehouse.hdr"
     },
     "Objects":
     [
@@ -43,7 +43,7 @@
             "MATERIAL":"diffuse_white",
             "FILE":"../scenes/Assets/Waltuh/waltuh.gltf",
             "TRANS":[0.0,0.0,0.0],
-            "ROTAT":[0.0,300.0,0.0],
+            "ROTAT":[0.0,120.0,0.0],
             "SCALE":[5.0,5.0,5.0]
         }
     ]
